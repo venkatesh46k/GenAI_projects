@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/billing.db
+logs/*.jsonl
+tests_qa/evidence/*.png
+.streamlit/
+*.egg-info/

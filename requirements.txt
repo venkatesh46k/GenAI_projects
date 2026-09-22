@@ -1,0 +1,16 @@
+langchain
+langchain-anthropic
+langchain-community
+langchain-ollama
+langchain-text-splitters
+langgraph
+chromadb
+sentence-transformers
+fastapi
+uvicorn
+streamlit
+deepeval
+pydantic
+python-dotenv
+pytest
+requests
