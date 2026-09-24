@@ -7,3 +7,5 @@ logs/*.jsonl
 tests_qa/evidence/*.png
 .streamlit/
 *.egg-info/
+.venv-langflow/
+langflow/chroma_db_langflow/
