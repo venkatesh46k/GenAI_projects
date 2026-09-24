@@ -14,3 +14,6 @@ pydantic
 python-dotenv
 pytest
 requests
+langchain-chroma
+langchain-huggingface
+click<8.4
