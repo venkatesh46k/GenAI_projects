@@ -9,3 +9,4 @@ tests_qa/evidence/*.png
 *.egg-info/
 .venv-langflow/
 langflow/chroma_db_langflow/
+eval/results/

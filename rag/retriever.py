@@ -1,4 +1,4 @@
-﻿import os
+import os
 from functools import lru_cache
 
 from langchain_huggingface import HuggingFaceEmbeddings
