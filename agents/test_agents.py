@@ -233,12 +233,32 @@ VALID_SCENARIO = (
 
 def test_testgen_valid_scenario_is_executed(monkeypatch):
     from agents import testgen_agent
+    from tests_qa import run_agent_tests
+
+    executed = []
+
+    def fake_execute(scenario):
+        executed.append(scenario)
+        return {"status": "pass", "detail": "Expected '244.50' found", "evidence_path": "evidence/x.png"}
 
     monkeypatch.setattr(testgen_agent, "get_llm", lambda: FakeLLM(f"```json\n{VALID_SCENARIO}\n```"))
+    monkeypatch.setattr(run_agent_tests, "execute_scenario", fake_execute)
     out = testgen_agent.testgen_node(AgentState(query="Verify recharging 199 updates the balance"))
-    assert out["test_scenario"]["scenario_name"] == "valid_recharge"
-    assert out["test_result"]["status"] == "pass"  # stub executor until Phase 7
-    assert "valid_recharge" in out["raw_answer"]
+    assert executed and executed[0]["scenario_name"] == "valid_recharge"
+    assert out["test_result"]["status"] == "pass"
+    assert "valid_recharge" in out["raw_answer"] and "passed" in out["raw_answer"]
+
+
+def test_testgen_reports_a_failing_run_as_failed(monkeypatch):
+    from agents import testgen_agent
+    from tests_qa import run_agent_tests
+
+    monkeypatch.setattr(testgen_agent, "get_llm", lambda: FakeLLM(VALID_SCENARIO))
+    monkeypatch.setattr(
+        run_agent_tests, "execute_scenario", lambda s: {"status": "fail", "detail": "Expected '9' in '8'", "evidence_path": None}
+    )
+    out = testgen_agent.testgen_node(AgentState(query="verify it"))
+    assert "FAILED" in out["raw_answer"] and "Expected '9' in '8'" in out["raw_answer"]
 
 
 @pytest.mark.parametrize(

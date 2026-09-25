@@ -10,3 +10,4 @@ tests_qa/evidence/*.png
 .venv-langflow/
 langflow/chroma_db_langflow/
 eval/results/
+.playwright-mcp/
