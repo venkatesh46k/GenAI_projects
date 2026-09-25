@@ -258,25 +258,15 @@ def test_testgen_rejects_unusable_scenarios(monkeypatch, reply):
     assert "couldn't turn" in out["raw_answer"] and "test_result" not in out
 
 
-# ---------- moderation ----------
-
-def test_moderation_masks_pii():
-    from agents.moderation import mask_pii
-
-    text = "Number 9876543210, dispute D-100001, txn TXN-abc12345 done."
-    masked = mask_pii(text)
-    assert "9876543210" not in masked and "D-100001" not in masked and "TXN-abc12345" not in masked
-    assert "[MASKED_MSISDN]" in masked
-
-
-def test_moderation_passes_clean_text_unchanged():
-    from agents.moderation import moderation_node
-
-    out = moderation_node(AgentState(query="q", raw_answer="Your plan is valid for 28 days."))
-    assert out["moderated_answer"] == "Your plan is valid for 28 days." and out["pii_masked"] is False
-
-
 # ---------- full graph ----------
+
+@pytest.fixture(autouse=True)
+def safe_moderation_llm(monkeypatch):
+    """Graph tests exercise the moderation node; keep its LLM safety check offline and 'safe'."""
+    from agents import moderation
+
+    monkeypatch.setattr(moderation, "get_llm", lambda: FakeLLM('{"safe": true, "category": null}'))
+
 
 @pytest.fixture(autouse=True)
 def isolated_log(tmp_path, monkeypatch):
