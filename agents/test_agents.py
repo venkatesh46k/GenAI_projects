@@ -314,17 +314,21 @@ def isolated_log(tmp_path, monkeypatch):
     return tmp_path / "interactions.jsonl"
 
 
-def test_graph_balance_end_to_end_masks_pii_and_logs(api, monkeypatch, isolated_log):
+def test_graph_echoes_the_number_the_user_typed_but_masks_others_and_logs_masked(api, monkeypatch, isolated_log):
     from agents import billing_agent
     from agents.graph import app
 
-    monkeypatch.setattr(billing_agent, "get_llm", lambda: FakeLLM("Balance for 9876543210 is 45.5."))
+    monkeypatch.setattr(
+        billing_agent, "get_llm", lambda: FakeLLM("Balance for 9876543210 is 45.5. (Also on file: 9123456780.)")
+    )
     result = app.invoke({"query": "What's my balance for 9876543210?"})
 
     assert result["route"] == "balance" and result["route_method"] == "regex"
-    assert "9876543210" not in result["moderated_answer"] and result["pii_masked"] is True
+    assert "9876543210" in result["moderated_answer"]  # the user typed it: echoing it reveals nothing
+    assert "9123456780" not in result["moderated_answer"] and "[MASKED_MSISDN]" in result["moderated_answer"]
+    assert result["pii_masked"] is True
     line = isolated_log.read_text(encoding="utf-8")
-    assert "9876543210" not in line and "MASKED_MSISDN" in line  # log is masked too
+    assert "9876543210" not in line and "9123456780" not in line and "MASKED_MSISDN" in line  # logs mask everything
 
 
 def test_graph_low_confidence_dispute_escalates(api, sop, monkeypatch):
@@ -377,3 +381,18 @@ def test_prompts_that_state_amounts_pin_the_currency_to_rupees():
 
     for prompt in (billing_agent.RESPONSE_PROMPT, dispute_agent.DISPUTE_PROMPT):
         assert "rupees" in prompt and "₹" in prompt and "never" in prompt.lower()
+
+
+def test_dispute_for_an_unknown_number_says_so_instead_of_blaming_the_system(api):
+    from agents import dispute_agent
+
+    out = dispute_agent.dispute_node(AgentState(query="wrong charge", msisdn="0000000000"))
+    assert "couldn't find a subscriber" in out["raw_answer"] and "unavailable" not in out["raw_answer"]
+    assert "dispute_id" not in out
+
+
+def test_escalation_for_an_unknown_number_says_so(api):
+    from agents import escalation_agent
+
+    out = escalation_agent.escalation_node(AgentState(query="get me a manager", msisdn="0000000000"))
+    assert "couldn't find a subscriber" in out["raw_answer"] and "escalation_ticket_id" not in out

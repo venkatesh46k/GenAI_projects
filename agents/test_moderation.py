@@ -225,3 +225,54 @@ def test_live_adversarial_responses_are_flagged(text):
     out = moderation_node(AgentState(query="q", raw_answer=text))
     assert out["moderated_answer"] == BLOCKED_MESSAGE
     assert out["safety_flag"] in {"off_topic", "inappropriate", "unclassified"}
+
+
+# ---------- echoing the user's own number (Option 2) ----------
+
+def _moderate(monkeypatch, raw, **state):
+    monkeypatch.setattr(moderation, "get_llm", lambda: FakeLLM(SAFE_VERDICT))
+    return moderation_node(AgentState(raw_answer=raw, **state))
+
+
+def test_a_number_the_user_typed_may_be_echoed(monkeypatch):
+    out = _moderate(monkeypatch, "I couldn't find a subscriber with number 9123456789.", query="show me 9123456789 details")
+    assert out["moderated_answer"] == "I couldn't find a subscriber with number 9123456789."
+    assert out["pii_masked"] is False
+
+
+def test_the_customer_selected_in_the_console_may_be_echoed(monkeypatch):
+    out = _moderate(monkeypatch, "Here are the details for 9876543210.", query="show me the details", msisdn="9876543210")
+    assert "9876543210" in out["moderated_answer"]
+
+
+def test_any_other_number_is_still_masked(monkeypatch):
+    out = _moderate(
+        monkeypatch, "9876543210 has a linked line 9123456780.", query="details for 9876543210", msisdn="9876543210"
+    )
+    assert out["moderated_answer"] == "9876543210 has a linked line [MASKED_MSISDN]."
+    assert out["pii_masked"] is True
+
+
+def test_a_different_formatting_of_the_same_number_counts_as_that_number(monkeypatch):
+    out = _moderate(monkeypatch, "Number +91 98765 43210 is active.", query="details for 9876543210")
+    assert "98765 43210" in out["moderated_answer"]
+
+
+def test_nothing_is_echoed_when_the_user_gave_no_number(monkeypatch):
+    out = _moderate(monkeypatch, "Your number is 9876543210.", query="what is my number?")
+    assert "9876543210" not in out["moderated_answer"]
+
+
+def test_logs_stay_fully_masked_even_for_echoed_numbers(monkeypatch, isolated_log):
+    _moderate(monkeypatch, "Balance for 9876543210 is 45.5", query="balance for 9876543210")
+    written = isolated_log.read_text(encoding="utf-8")
+    assert "9876543210" not in written and "[MASKED_MSISDN]" in written
+
+
+def test_keep_list_matches_on_the_last_ten_digits():
+    from agents.pii import mask_pii, numbers_in
+
+    assert numbers_in("call +91 98765 43210 or 9123456780") == ["+91 98765 43210", "9123456780"]
+    assert mask_pii("a 919876543210 b", keep_msisdns=["9876543210"]) == "a 919876543210 b"
+    assert mask_pii("a 9123456780 b", keep_msisdns=["9876543210"]) == "a [MASKED_MSISDN] b"
+    assert mask_pii("a 9123456780 b", keep_msisdns=[None, ""]) == "a [MASKED_MSISDN] b"

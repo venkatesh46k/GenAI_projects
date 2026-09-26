@@ -88,3 +88,9 @@ def test_disputes_can_be_listed_all_or_filtered_by_number():
     assert [d["dispute_id"] for d in mine] == ["D-100001"]
     assert mine[0]["msisdn"] == MSISDN and mine[0]["status"] == "open" and mine[0]["created_at"]
     assert client.get("/disputes?msisdn=0000000000").json() == []
+
+
+def test_a_dispute_for_an_unknown_subscriber_is_refused():
+    r = client.post("/dispute", json={"msisdn": "0000000000", "reason": "x", "amount_disputed": 1})
+    assert r.status_code == 404 and r.json() == {"detail": "Subscriber not found"}
+    assert len(client.get("/disputes").json()) == 2  # nothing was created

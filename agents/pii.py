@@ -18,7 +18,29 @@ REPLY_LABELS = ("msisdn", "txn_id")
 ALL_LABELS = tuple(PII_PATTERNS)
 
 
-def mask_pii(text: str, labels=REPLY_LABELS) -> str:
+def _last_ten_digits(number: str) -> str:
+    return re.sub(r"\D", "", number)[-10:]
+
+
+def numbers_in(text: str) -> list[str]:
+    """Phone numbers written in `text`, in any of the formats MSISDN_PATTERN understands."""
+    return [m.group(0) for m in MSISDN_PATTERN.finditer(text or "")]
+
+
+def mask_pii(text: str, labels=REPLY_LABELS, keep_msisdns=()) -> str:
+    """Replace personal identifiers with [MASKED_...] placeholders.
+
+    `keep_msisdns` are numbers the *user themselves* supplied (typed in the question, or the customer selected in the
+    console). Repeating those back reveals nothing they don't already have, and masking them makes replies read as
+    broken ("no subscriber with number [MASKED_MSISDN]"). Any other number, e.g. one the assistant pulled from data, is
+    still masked. Numbers match on their last 10 digits, so "+91 98765 43210" and "9876543210" are the same number.
+    """
+    keep = {_last_ten_digits(n) for n in keep_msisdns if n}
     for label in labels:
-        text = PII_PATTERNS[label].sub(f"[MASKED_{label.upper()}]", text)
+        if label == "msisdn" and keep:
+            text = PII_PATTERNS[label].sub(
+                lambda m: m.group(0) if _last_ten_digits(m.group(0)) in keep else "[MASKED_MSISDN]", text
+            )
+        else:
+            text = PII_PATTERNS[label].sub(f"[MASKED_{label.upper()}]", text)
     return text

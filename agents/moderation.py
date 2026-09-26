@@ -2,7 +2,7 @@ import re
 
 from agents.interaction_log import log_interaction
 from agents.llm import get_llm
-from agents.pii import mask_pii
+from agents.pii import mask_pii, numbers_in
 from agents.state import AgentState
 from agents.utils import parse_json
 
@@ -72,7 +72,8 @@ def classify_safety(text: str) -> dict:
 def moderation_node(state: AgentState) -> dict:
     """Step 1: regex PII mask. Step 2: LLM safety check on the already-masked text."""
     raw = state.get("raw_answer") or ""
-    masked = mask_pii(raw)
+    # Numbers the user typed or selected may be echoed back; everything else is masked (see pii.mask_pii).
+    masked = mask_pii(raw, keep_msisdns=[*numbers_in(state.get("query", "")), state.get("msisdn")])
 
     if not masked.strip():
         verdict = {"safe": True, "category": None}

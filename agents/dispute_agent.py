@@ -52,6 +52,11 @@ def dispute_node(state: AgentState) -> dict:
             json={"msisdn": msisdn, "reason": query, "amount_disputed": amount},
             timeout=5,
         )
+        if resp.status_code == 404:
+            return {
+                "raw_answer": f"I couldn't find a subscriber with number {msisdn}. Could you check the number?",
+                "dispute_confidence": 1.0,
+            }
         resp.raise_for_status()
         record = resp.json()
     except requests.exceptions.RequestException:

@@ -1,0 +1,30 @@
+{
+  "name": "billing-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prepaid billing API (Fastify + TypeScript + node:sqlite). Owns customers, plans, usage, recharges and disputes.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "serve": "tsx src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "seed": "tsx src/seed.ts",
+    "seed:built": "node dist/seed.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fastify": "^5.12.5",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}

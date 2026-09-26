@@ -11,3 +11,6 @@ tests_qa/evidence/*.png
 langflow/chroma_db_langflow/
 eval/results/
 .playwright-mcp/
+
+services/billing/node_modules/
+services/billing/dist/

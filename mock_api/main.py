@@ -76,7 +76,7 @@ def recharge(req: RechargeRequest):
 def get_cdrs(msisdn: str, limit: int = 10):
     conn = get_connection()
     rows = conn.execute(
-        "SELECT * FROM cdrs WHERE msisdn=? ORDER BY timestamp DESC LIMIT ?", (msisdn, limit)
+        "SELECT * FROM cdrs WHERE msisdn=? ORDER BY timestamp DESC, rowid DESC LIMIT ?", (msisdn, limit)
     ).fetchall()
     conn.close()
     return [CDRItem(**dict(r)) for r in rows]
@@ -86,6 +86,9 @@ def get_cdrs(msisdn: str, limit: int = 10):
 def create_dispute(req: DisputeRequest):
     dispute_id = f"D-{uuid.uuid4().hex[:6]}"
     conn = get_connection()
+    if not conn.execute("SELECT 1 FROM subscribers WHERE msisdn=?", (req.msisdn,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Subscriber not found")
     conn.execute(
         "INSERT INTO disputes VALUES (?,?,?,?,?,?)",
         (dispute_id, req.msisdn, req.reason, req.amount_disputed, "open", datetime.now().isoformat()),
@@ -137,7 +140,7 @@ def get_transactions(msisdn: str, limit: int = 20):
         raise HTTPException(status_code=404, detail="Subscriber not found")
     rows = conn.execute(
         "SELECT txn_id, type, amount, balance_after, timestamp FROM transactions WHERE msisdn=? "
-        "ORDER BY timestamp DESC LIMIT ?",
+        "ORDER BY timestamp DESC, rowid DESC LIMIT ?",
         (msisdn, limit),
     ).fetchall()
     conn.close()
@@ -149,9 +152,9 @@ def list_disputes(msisdn: Optional[str] = None, limit: int = 50):
     conn = get_connection()
     if msisdn:
         rows = conn.execute(
-            "SELECT * FROM disputes WHERE msisdn=? ORDER BY created_at DESC LIMIT ?", (msisdn, limit)
+            "SELECT * FROM disputes WHERE msisdn=? ORDER BY created_at DESC, rowid DESC LIMIT ?", (msisdn, limit)
         ).fetchall()
     else:
-        rows = conn.execute("SELECT * FROM disputes ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        rows = conn.execute("SELECT * FROM disputes ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,)).fetchall()
     conn.close()
     return [DisputeSummary(**dict(r)) for r in rows]

@@ -39,6 +39,8 @@ def escalation_node(state: AgentState) -> dict:
                 json={"msisdn": msisdn, "reason": query, "amount_disputed": 0.0},
                 timeout=5,
             )
+            if created.status_code == 404:
+                return {"raw_answer": f"I couldn't find a subscriber with number {msisdn}. Could you check the number?"}
             created.raise_for_status()
             dispute_id = created.json()["dispute_id"]
             tool_calls.append({"endpoint": "/dispute", "msisdn": msisdn, "dispute_id": dispute_id})
