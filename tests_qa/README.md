@@ -1,7 +1,8 @@
-# QA agent: Playwright MCP against the mock recharge UI
+# QA agent: Playwright MCP against the React console
 
-Drives a real browser through the 3-page recharge flow (`ui/recharge_app.py`) using the Playwright MCP server, checks
-the result against the billing API, and saves screenshot evidence to `tests_qa/evidence/`.
+Drives a real browser through the console's recharge flow (sign in, open a customer, Recharge dialog: details, review,
+receipt) using the Playwright MCP server, checks the result against the billing API, and saves screenshot evidence to
+`tests_qa/evidence/`.
 
 ```
 mcp_client.py       async wrapper over the MCP tools (navigate, fill, click, select, wait_for, read_text, screenshot)
@@ -14,11 +15,11 @@ test_scenarios_e2e.py   the five scenarios in a real browser (skipped when servi
 ## Run
 
 ```powershell
-# terminal 1
-.venv\Scripts\python -m uvicorn mock_api.main:app --port 8000
-# terminal 2
-.venv\Scripts\python -m streamlit run ui/recharge_app.py --server.port 8501
-# terminal 3 (needs Node.js 18+; the MCP server is fetched on first use via npx)
+# once: build the front end (restart the server after every rebuild: it lists the built files at startup)
+cd web; npm run build
+# terminal 1: billing API on :8000 and the console on :8080
+cd services/billing; npm run seed; npm run serve
+# terminal 2 (needs Node.js 18+; the MCP server is fetched on first use via npx)
 $env:PYTHONPATH = "."
 python -m tests_qa.run_agent_tests                     # the five hand-written scenarios (deterministic)
 python -m tests_qa.run_agent_tests --generate          # the Test-Gen agent writes the steps from plain English
@@ -32,9 +33,12 @@ the Test-Gen agent, which writes a scenario, runs it here, and answers with the 
 ## Design notes
 
 - **Selectors.** Playwright MCP tools take a `target` that is a snapshot ref or a unique CSS selector (verified against
-  `@playwright/mcp` 0.0.82; the architecture doc's `selector`-based mapping is out of date). Streamlit exposes every
-  keyed widget's container as `.st-key-<key>`, so the UI gives each element a `key` and scenarios use e.g.
-  `.st-key-continue_btn button`, never Streamlit's generated ids.
+  `@playwright/mcp` 0.0.82; the architecture doc's `selector`-based mapping is out of date). The console gives every
+  element a test needs a `data-testid`, and scenarios use e.g. `[data-testid="recharge-continue"]`, never class names
+  or generated ids, so restyling the UI cannot break them.
+- **Signed out every time.** Each run gets a fresh isolated browser, so every scenario opens the customer page, signs in
+  with the demo login (which returns to that page) and then opens the Recharge dialog. Typing never submits: like a
+  user, the scenario clicks the button.
 - **Text assertions** come from `browser_snapshot(target=<selector>)`, the accessibility snapshot of one subtree, not
   screenshots.
 - **No hardcoded balances.** Expected values use `{pre_balance+N}`, filled from `GET /balance` before the run, so the
@@ -46,6 +50,12 @@ the Test-Gen agent, which writes a scenario, runs it here, and answers with the 
 
 ## What was verified
 
+- Against the React console (Phase 9): all five scenarios pass in a real browser, two LLM-written scenarios pass with
+  `--generate`, and a chat request to the Copilot ran a scenario and returned the verdict with its screenshot. With the
+  review step deliberately showing amount + 1 the scenario failed with `Expected '599.00' in '₹600.00'`.
+
+Earlier, against the Streamlit recharge app:
+
 - All five scenarios pass in a real browser (~80 s), and via `--generate` with a local `llama3.1:8b` writing the steps.
 - **Mutation check:** with the UI deliberately broken, the scenarios fail with precise messages: a confirmation page
   showing the amount + 1 (`Expected '599.00' in 'Amount: 600.00'`) and a Confirm that charges twice (`Expected '740.50'
@@ -55,6 +65,6 @@ the Test-Gen agent, which writes a scenario, runs it here, and answers with the 
 
 - LLM-generated scenarios can check what the schema lets them express. The schema has no API-check field, so a
   generated scenario checks the receipt but not the API balance; the hand-written scenarios do both.
-- Scenarios mutate real rows in the mock database (each recharge adds to the balance). Re-run
-  `python -m mock_api.seed` to reset it.
+- Scenarios mutate real rows (each recharge adds to the balance). Re-run `npm run seed` in `services/billing` to
+  reset the database. Amounts are compared without thousands separators, so a balance past 1,000 still matches.
 - A small local model produced valid scenarios in every attempt seen (7 of 7), which is a small sample, not a guarantee.

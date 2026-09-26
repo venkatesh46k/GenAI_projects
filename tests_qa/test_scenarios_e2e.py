@@ -1,9 +1,9 @@
 """End-to-end: run every scenario in a real browser through the Playwright MCP server.
 
-Needs the billing API, the recharge UI and Node.js; skipped (not failed) when they are not available:
+Needs the billing API, the console (built front end) and Node.js; skipped (not failed) when they are not available:
 
-    uvicorn mock_api.main:app --port 8000
-    streamlit run ui/recharge_app.py --server.port 8501
+    cd web && npm run build
+    cd services/billing && npm run seed && npm run serve       # billing API :8000, console :8080
     pytest tests_qa/test_scenarios_e2e.py
 """
 import shutil

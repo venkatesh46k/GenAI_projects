@@ -144,7 +144,7 @@ export function RechargeDialog({ msisdn, currentPlanId, open, onOpenChange }: Pr
                   ))}
                 </div>
                 {amountError && (
-                  <p id="recharge-amount-error" role="alert" className="text-xs text-danger">
+                  <p id="recharge-amount-error" data-testid="recharge-amount-error" role="alert" className="text-xs text-danger">
                     {amountError}
                   </p>
                 )}

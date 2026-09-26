@@ -10,7 +10,7 @@ _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
 
 def recharge_ui_url() -> str:
-    return os.getenv("RECHARGE_UI_URL", "http://localhost:8501")
+    return os.getenv("RECHARGE_UI_URL", "http://localhost:8080")
 
 
 def _origin(url: str):

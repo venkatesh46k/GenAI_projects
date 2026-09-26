@@ -34,6 +34,14 @@ class FakeLLM:
         ("There is an overcharge on my bill", "dispute"),
         ("I was overcharged last week", "dispute"),
         ("I was charged twice for my recharge on 9876543210", "dispute"),
+        # process/policy questions that merely mention balance or recharge want the knowledge base
+        ("What happens when my balance drops below 5 rupees?", "rag"),
+        ("How does a recharge get applied?", "rag"),
+        ("How long is the grace period after my plan expires?", "rag"),
+        # ...but with a number it is about that subscriber
+        ("What happens if I recharge 9876543210 with 99?", "balance"),
+        ("What is the balance for 9876543210?", "balance"),
+        ("Why does my recharge keep failing? I want to dispute it", "dispute"),
     ],
 )
 def test_router_regex_paths_never_call_llm(monkeypatch, query, label):
@@ -235,7 +243,7 @@ def test_escalation_without_number_asks_for_it(api):
 
 VALID_SCENARIO = (
     '{"scenario_name": "valid_recharge", "target_page": "recharge", '
-    '"steps": [{"action": "navigate", "target": "http://localhost:8501", "value": null}], '
+    '"steps": [{"action": "navigate", "target": "http://localhost:8080", "value": null}], '
     '"assertion": {"target": "#receipt_balance", "expected_contains": "244.50"}}'
 )
 

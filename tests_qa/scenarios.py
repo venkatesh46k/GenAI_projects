@@ -12,32 +12,46 @@ plus, for scenarios that compare against the billing system:
 Expected values may use `{pre_balance+N}`: the subscriber's balance read live from GET /balance before the run, plus
 N, formatted to two decimals. Nothing depends on the seed data, so scenarios can be re-run any number of times.
 
-Selectors are the stable `.st-key-<key>` classes exposed by ui/recharge_app.py. Actions:
-navigate | fill | click | select | wait_for (text) | read_text.
+The target is the React console. Every browser run starts signed out, so each scenario opens the customer's page, signs
+in with the demo login (which returns to that page) and opens the Recharge dialog: details -> review -> receipt.
+Selectors are the console's `data-testid` attributes. Actions: navigate | fill | click | select | wait_for | read_text.
 """
+from tests_qa.urls import recharge_ui_url
 
-UI = "http://localhost:8501"
+UI = recharge_ui_url()
 MSISDN = "9876543210"
 
+
+def _tid(name: str) -> str:
+    return f'[data-testid="{name}"]'
+
+
 SEL = {
-    "msisdn": ".st-key-msisdn_input input",
-    "amount": ".st-key-amount_input input",
-    "plan": ".st-key-plan_dropdown",
-    "continue": ".st-key-continue_btn button",
-    "back": ".st-key-back_btn button",
-    "confirm": ".st-key-confirm_btn button",
-    "error": ".st-key-error_message",
-    "confirm_amount": ".st-key-confirm_amount_display",
-    "receipt_balance": ".st-key-receipt_balance",
-    "receipt_txn": ".st-key-receipt_txn_id",
+    "login_name": "#name",
+    "login_submit": _tid("login-submit"),
+    "open_recharge": _tid("open-recharge"),
+    "amount": _tid("recharge-amount"),
+    "plan": _tid("recharge-plan"),
+    "continue": _tid("recharge-continue"),
+    "back": _tid("recharge-back"),
+    "confirm": _tid("recharge-confirm"),
+    "error": _tid("recharge-amount-error"),
+    "confirm_amount": _tid("review-amount"),
+    "receipt_balance": _tid("receipt-balance"),
+    "receipt_txn": _tid("receipt-txn"),
 }
 
 
 def _open_form(msisdn: str, amount: str, plan: str | None = None) -> list[dict]:
+    """Sign in, open the customer, open the Recharge dialog and fill in the details step."""
     steps = [
-        {"action": "navigate", "target": UI, "value": None},
-        {"action": "wait_for", "target": "Mobile number", "value": None},
-        {"action": "fill", "target": SEL["msisdn"], "value": msisdn},
+        {"action": "navigate", "target": f"{UI}/customers/{msisdn}", "value": None},
+        {"action": "wait_for", "target": "Sign in to look up customers", "value": None},
+        {"action": "fill", "target": SEL["login_name"], "value": "QA Agent"},
+        {"action": "click", "target": SEL["login_submit"], "value": None},
+        {"action": "wait_for", "target": "Prepaid subscriber", "value": None},
+        {"action": "click", "target": SEL["open_recharge"], "value": None},
+        {"action": "wait_for", "target": "Add balance to", "value": None},
         {"action": "fill", "target": SEL["amount"], "value": amount},
     ]
     if plan:
@@ -55,7 +69,7 @@ SCENARIOS = [
         "steps": _open_form(MSISDN, "199", "PLAN_199")
         + [
             {"action": "click", "target": SEL["continue"], "value": None},
-            {"action": "wait_for", "target": "Confirm your recharge", "value": None},
+            {"action": "wait_for", "target": "Confirm recharge", "value": None},
             {"action": "click", "target": SEL["confirm"], "value": None},
             {"action": "wait_for", "target": "Recharge successful", "value": None},
             {"action": "read_text", "target": SEL["receipt_txn"], "value": None},
@@ -63,16 +77,16 @@ SCENARIOS = [
         "assertion": {"target": SEL["receipt_balance"], "expected_contains": "{pre_balance+199}"},
     },
     {
-        "scenario_name": "invalid_msisdn_rejected",
-        "requirement": "Verify that entering an invalid mobile number like 123 on the recharge page is rejected with "
-        "a clear error message.",
+        "scenario_name": "invalid_amount_rejected",
+        "requirement": "Verify that entering an invalid amount like abc on the recharge page is rejected with a clear "
+        "error message.",
         "target_page": "recharge",
-        "steps": _open_form("123", "199")
+        "steps": _open_form(MSISDN, "abc")
         + [
             {"action": "click", "target": SEL["continue"], "value": None},
-            {"action": "wait_for", "target": "Enter a valid 10-digit number", "value": None},
+            {"action": "wait_for", "target": "Use digits with at most 2 decimals", "value": None},
         ],
-        "assertion": {"target": SEL["error"], "expected_contains": "Enter a valid 10-digit number"},
+        "assertion": {"target": SEL["error"], "expected_contains": "Use digits with at most 2 decimals"},
     },
     {
         "scenario_name": "confirmation_amount_matches",
@@ -82,7 +96,7 @@ SCENARIOS = [
         "steps": _open_form(MSISDN, "599")
         + [
             {"action": "click", "target": SEL["continue"], "value": None},
-            {"action": "wait_for", "target": "Confirm your recharge", "value": None},
+            {"action": "wait_for", "target": "Confirm recharge", "value": None},
         ],
         "assertion": {"target": SEL["confirm_amount"], "expected_contains": "599.00"},
     },
@@ -95,7 +109,7 @@ SCENARIOS = [
         "steps": _open_form(MSISDN, "99")
         + [
             {"action": "click", "target": SEL["continue"], "value": None},
-            {"action": "wait_for", "target": "Confirm your recharge", "value": None},
+            {"action": "wait_for", "target": "Confirm recharge", "value": None},
             {"action": "click", "target": SEL["confirm"], "value": None},
             {"action": "wait_for", "target": "Recharge successful", "value": None},
         ],
@@ -111,11 +125,11 @@ SCENARIOS = [
         "steps": _open_form(MSISDN, "99")
         + [
             {"action": "click", "target": SEL["continue"], "value": None},
-            {"action": "wait_for", "target": "Confirm your recharge", "value": None},
+            {"action": "wait_for", "target": "Confirm recharge", "value": None},
             {"action": "click", "target": SEL["back"], "value": None},
-            {"action": "wait_for", "target": "Mobile number", "value": None},
+            {"action": "wait_for", "target": "Add balance to", "value": None},
             {"action": "click", "target": SEL["continue"], "value": None},
-            {"action": "wait_for", "target": "Confirm your recharge", "value": None},
+            {"action": "wait_for", "target": "Confirm recharge", "value": None},
             {"action": "click", "target": SEL["confirm"], "value": None},
             {"action": "wait_for", "target": "Recharge successful", "value": None},
         ],

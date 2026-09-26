@@ -16,6 +16,15 @@ ROUTES = [
         ),
     ),
     ("testgen", re.compile(r"\b(test|verify|check that|make sure .* works|validate the (ui|flow|page))\b", re.I)),
+    # Process and policy questions ("what happens when the balance is low?", "how does a recharge get applied?") mention
+    # balance/recharge but want the knowledge base, not a lookup. Not when a number is given: that is about a subscriber.
+    (
+        "rag",
+        re.compile(
+            r"^(?!.*\b\d{10}\b)\s*(what happens (when|if)|what if|how (does|do|long|is|are)|when (does|do)|why (does|do))\b",
+            re.I,
+        ),
+    ),
     # "my plan" / "my account" are deliberately not keywords: "when does my plan expire?" is a policy
     # question. Those ambiguous phrasings fall through to the LLM classifier instead.
     ("balance", re.compile(r"\b(balance|recharge|top ?up|plan details)\b", re.I)),

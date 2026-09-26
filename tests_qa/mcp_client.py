@@ -3,15 +3,15 @@
 Maps the scenario vocabulary onto the server's real tools (verified against @playwright/mcp 0.0.82):
 
     navigate   -> browser_navigate(url)
-    fill       -> browser_type(element, target, text, submit=True)     Enter commits Streamlit inputs
+    fill       -> browser_type(element, target, text)                  types only; a click submits, like a user
     click      -> browser_click(element, target)
-    select     -> browser_click(dropdown) then browser_click(option)   Streamlit selects are not native <select>
+    select     -> browser_select_option(element, target, values)       the console uses native <select> elements
     wait_for   -> browser_wait_for(text)
     read_text  -> browser_snapshot(target=<selector>)                  accessibility snapshot of one subtree
     screenshot -> browser_take_screenshot(type="png")
 
-`target` accepts a snapshot ref or a unique CSS selector; the scenarios use the stable `.st-key-<key>` classes that
-ui/recharge_app.py exposes, not Streamlit's generated ids.
+`target` accepts a snapshot ref or a unique CSS selector; the scenarios use the console's `data-testid` attributes
+(`[data-testid="recharge-amount"]`), which do not change when the styling does.
 """
 import base64
 import os
@@ -118,15 +118,21 @@ class MCPClient:
     async def navigate(self, url: str) -> None:
         await self._call("browser_navigate", url, url=url)
 
-    async def fill(self, selector: str, value: str) -> None:
-        await self._call("browser_type", selector, element=selector, target=selector, text=value, submit=True)
+    async def fill(self, selector: str, value: str, submit: bool = False) -> None:
+        await self._call("browser_type", selector, element=selector, target=selector, text=value, submit=submit)
         await self._settle()
 
     async def click(self, selector: str) -> None:
         await self._call("browser_click", selector, element=selector, target=selector)
         await self._settle()
 
+    async def select_native(self, selector: str, value: str) -> None:
+        """Choose an <option> of a native <select> by its value (for example a plan id)."""
+        await self._call("browser_select_option", selector, element=selector, target=selector, values=[value])
+        await self._settle()
+
     async def select(self, selector: str, option: str) -> None:
+        """Legacy: a Streamlit dropdown (click it, then click the option)."""
         await self.click(selector)
         await self.click(f'[role="option"]:has-text("{option}")')
 
@@ -168,7 +174,7 @@ class MCPClient:
         elif action == "click":
             await self.click(target)
         elif action == "select":
-            await self.select(target, value or "")
+            await self.select_native(target, value or "")
         elif action == "wait_for":
             await self.wait_for_text(target)
         elif action == "read_text":

@@ -11,7 +11,7 @@ from tests_qa.scenarios import BY_NAME, SCENARIOS, SEL
 # ---------- extract_text: real Playwright MCP snapshot shapes ----------
 
 SNAPSHOT = """### Page
-- Page URL: http://localhost:8501/
+- Page URL: http://localhost:8080/
 ### Snapshot
 ```yaml
 - paragraph [ref=e91]: "Amount: 199.00"
@@ -64,7 +64,7 @@ def test_resolve_without_a_balance_is_a_clear_error():
 
 
 def test_msisdn_is_inferred_from_the_steps_when_setup_is_missing():
-    scenario = {"steps": [{"action": "fill", "target": SEL["msisdn"], "value": "9123456780"}]}
+    scenario = {"steps": [{"action": "navigate", "target": "http://localhost:8080/customers/9123456780", "value": None}]}
     assert runner.infer_msisdn(scenario) == "9123456780"
     assert runner.infer_msisdn({"steps": [], "setup": {"msisdn": "9988776655"}}) == "9988776655"
     assert runner.infer_msisdn({"steps": []}) == runner.DEFAULT_MSISDN
@@ -200,7 +200,7 @@ def test_api_check_passes_when_the_api_agrees(fake_env, monkeypatch):
 
 
 def test_unreachable_services_fail_with_a_helpful_message(monkeypatch):
-    monkeypatch.setattr(runner, "_preflight", lambda: "recharge UI not reachable at http://localhost:8501 (start it)")
+    monkeypatch.setattr(runner, "_preflight", lambda: "recharge UI not reachable at http://localhost:8080 (start it)")
     result = runner.execute_scenario(scenario_with())
     assert result["status"] == "fail" and "not reachable" in result["detail"]
 
@@ -287,15 +287,15 @@ from tests_qa.urls import is_allowed_navigation  # noqa: E402
 @pytest.mark.parametrize(
     "url,allowed",
     [
-        ("http://localhost:8501", True),
-        ("http://localhost:8501/", True),
-        ("http://127.0.0.1:8501/?x=1", True),  # loopback names are the same host
-        ("http://localhost:8501/some/page", True),
+        ("http://localhost:8080", True),
+        ("http://localhost:8080/", True),
+        ("http://127.0.0.1:8080/?x=1", True),  # loopback names are the same host
+        ("http://localhost:8080/some/page", True),
         ("http://evil.example/", False),
-        ("https://localhost:8501", False),  # different scheme
+        ("https://localhost:8080", False),  # different scheme
         ("http://localhost:9999", False),  # different port: another local service
-        ("http://localhost.evil.example:8501", False),
-        ("http://localhost:8501@evil.example/", False),  # userinfo trick: the real host is evil.example
+        ("http://localhost.evil.example:8080", False),
+        ("http://localhost:8080@evil.example/", False),  # userinfo trick: the real host is evil.example
         ("file:///C:/Users/secrets.txt", False),
         ("javascript:alert(1)", False),
         ("about:blank", False),
@@ -309,7 +309,7 @@ def test_navigation_is_limited_to_the_recharge_app(monkeypatch, url, allowed):
 
 def test_the_allowed_origin_follows_the_configured_url(monkeypatch):
     monkeypatch.setenv("RECHARGE_UI_URL", "http://127.0.0.1:9000")
-    assert is_allowed_navigation("http://localhost:9000") and not is_allowed_navigation("http://localhost:8501")
+    assert is_allowed_navigation("http://localhost:9000") and not is_allowed_navigation("http://localhost:8080")
 
 
 def test_the_validator_rejects_a_generated_scenario_that_navigates_elsewhere():
@@ -320,7 +320,7 @@ def test_the_validator_rejects_a_generated_scenario_that_navigates_elsewhere():
         "assertion": {"target": ".a", "expected_contains": "b"},
     }
     assert is_valid_scenario(scenario) is False
-    scenario["steps"][0]["target"] = "http://localhost:8501"
+    scenario["steps"][0]["target"] = "http://localhost:8080"
     assert is_valid_scenario(scenario) is True
 
 
@@ -334,3 +334,10 @@ def test_the_runner_refuses_a_bad_navigation_even_if_validation_was_bypassed(mon
         }
     )
     assert result["status"] == "fail" and "not allowed" in result["detail"]
+
+
+def test_amounts_match_with_or_without_thousands_grouping():
+    assert runner.contains("₹244.50", "244.50")
+    assert runner.contains("₹1,234.50", "1234.50")  # the console groups thousands; the expected value does not
+    assert runner.contains("₹1,234.50", "1,234.50")
+    assert not runner.contains("₹1,234.50", "1234.51")

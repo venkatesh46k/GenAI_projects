@@ -48,8 +48,12 @@ export function buildWebApp(db: DatabaseSync, options: FastifyServerOptions = {}
   const ttl = config.sessionTtlSeconds ?? DEFAULT_TTL_SECONDS;
 
   const app = createServer(options, (req, reply) => {
-    // Unknown /api paths are API errors; any other unknown GET is a front-end route the single-page app resolves.
-    if (serveSpa && req.method === "GET" && !req.url.startsWith("/api/")) return reply.type("text/html").sendFile("index.html");
+    // Unknown /api paths are API errors; a path with a file extension is a missing file (a stale asset URL must be a 404,
+    // not an HTML page a browser then refuses as a script); any other unknown GET is a front-end route the SPA resolves.
+    const pathname = req.url.split("?")[0] ?? "";
+    if (serveSpa && req.method === "GET" && !pathname.startsWith("/api/") && !path.extname(pathname)) {
+      return reply.type("text/html").sendFile("index.html");
+    }
     return reply.code(404).send({ detail: "Not Found" });
   });
 

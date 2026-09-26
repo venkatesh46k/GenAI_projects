@@ -4,12 +4,13 @@ import os
 from agents.llm import get_llm
 from agents.state import AgentState
 from agents.utils import parse_json
-from tests_qa.urls import is_allowed_navigation
+from tests_qa.urls import is_allowed_navigation, recharge_ui_url
 
 REQUIRED_KEYS = {"scenario_name", "target_page", "steps", "assertion"}
 VALID_ACTIONS = {"navigate", "fill", "click", "select", "wait_for", "read_text"}
 VALID_PAGES = {"recharge", "confirmation", "receipt"}
-UI_URL = "http://localhost:8501"
+UI_URL = recharge_ui_url()
+CUSTOMER_URL = UI_URL + "/customers/9876543210"
 
 # The worked example is the happy-path scenario; a small model imitates a concrete example far more reliably
 # than it follows an abstract schema.
@@ -17,50 +18,59 @@ _EXAMPLE = {
     "scenario_name": "valid_recharge_e2e",
     "target_page": "receipt",
     "steps": [
-        {"action": "navigate", "target": UI_URL, "value": None},
-        {"action": "wait_for", "target": "Mobile number", "value": None},
-        {"action": "fill", "target": ".st-key-msisdn_input input", "value": "9876543210"},
-        {"action": "fill", "target": ".st-key-amount_input input", "value": "199"},
-        {"action": "click", "target": ".st-key-continue_btn button", "value": None},
-        {"action": "wait_for", "target": "Confirm your recharge", "value": None},
-        {"action": "click", "target": ".st-key-confirm_btn button", "value": None},
+        {"action": "navigate", "target": CUSTOMER_URL, "value": None},
+        {"action": "wait_for", "target": "Sign in to look up customers", "value": None},
+        {"action": "fill", "target": "#name", "value": "QA Agent"},
+        {"action": "click", "target": '[data-testid="login-submit"]', "value": None},
+        {"action": "wait_for", "target": "Prepaid subscriber", "value": None},
+        {"action": "click", "target": '[data-testid="open-recharge"]', "value": None},
+        {"action": "wait_for", "target": "Add balance to", "value": None},
+        {"action": "fill", "target": '[data-testid="recharge-amount"]', "value": "199"},
+        {"action": "click", "target": '[data-testid="recharge-continue"]', "value": None},
+        {"action": "wait_for", "target": "Confirm recharge", "value": None},
+        {"action": "click", "target": '[data-testid="recharge-confirm"]', "value": None},
         {"action": "wait_for", "target": "Recharge successful", "value": None},
     ],
-    "assertion": {"target": ".st-key-receipt_balance", "expected_contains": "{pre_balance+199}"},
+    "assertion": {"target": '[data-testid="receipt-balance"]', "expected_contains": "{pre_balance+199}"},
 }
 
 TESTGEN_PROMPT = (
-    """Convert this plain-English QA requirement into a structured browser test scenario for a 3-page
-prepaid recharge web app. Respond with ONE JSON object only, no commentary.
+    """Convert this plain-English QA requirement into a structured browser test scenario for a prepaid billing
+console. Respond with ONE JSON object only, no commentary.
 
-The app: page "recharge" (mobile number, amount, plan, Continue button) -> page "confirmation" (shows the entered
-details, Back and Confirm buttons) -> page "receipt" (transaction id, new balance).
+The app: a customer page (/customers/<10-digit number>) with a Recharge button that opens a dialog with 3 pages:
+page "recharge" (amount, plan, Continue button) -> page "confirmation" (shows the amount, Back and Confirm recharge
+buttons) -> page "receipt" (transaction id, new balance). The browser starts signed out: every scenario must first open
+the customer page, sign in with the name field and the sign-in button (see the example), then click Recharge.
 
 Allowed actions: navigate | fill | click | select | wait_for | read_text
 - navigate: target = """
-    + UI_URL
-    + """
+    + CUSTOMER_URL
+    + """  (use the number the requirement names, default 9876543210)
 - wait_for: target = text that must appear on the page (use it after every click that changes page)
-- fill: target = a selector below, value = the text to type
+- fill: target = a selector below, value = the text to type (typing never submits: click the button)
 - click: target = a selector below
 - select: target = the plan dropdown selector, value = PLAN_199 | PLAN_599 | PLAN_99
 
 Selectors (use exactly these):
-  mobile number field   .st-key-msisdn_input input
-  amount field          .st-key-amount_input input
-  plan dropdown         .st-key-plan_dropdown
-  Continue button       .st-key-continue_btn button
-  Back button           .st-key-back_btn button
-  Confirm button        .st-key-confirm_btn button
-  error message         .st-key-error_message          (text: "Enter a valid 10-digit number")
-  confirmation amount   .st-key-confirm_amount_display (text like "Amount: 599.00")
-  receipt new balance   .st-key-receipt_balance        (text like "New balance: 244.50")
-  receipt transaction   .st-key-receipt_txn_id
+  name field (sign-in)  #name
+  sign-in button        [data-testid="login-submit"]
+  Recharge button       [data-testid="open-recharge"]
+  amount field          [data-testid="recharge-amount"]
+  plan dropdown         [data-testid="recharge-plan"]
+  Continue button       [data-testid="recharge-continue"]
+  Back button           [data-testid="recharge-back"]
+  Confirm button        [data-testid="recharge-confirm"]
+  amount error          [data-testid="recharge-amount-error"]   (text: "Use digits with at most 2 decimals, ...")
+  confirmation amount   [data-testid="review-amount"]           (text like "₹599.00")
+  receipt new balance   [data-testid="receipt-balance"]         (text like "₹244.50")
+  receipt transaction   [data-testid="receipt-txn"]
 
-Page texts for wait_for: "Mobile number" (recharge page), "Confirm your recharge" (confirmation page),
-"Recharge successful" (receipt page). Amounts are shown with two decimals (599 -> "599.00").
+Page texts for wait_for: "Sign in to look up customers" (sign-in page), "Prepaid subscriber" (customer page),
+"Add balance to" (recharge page), "Confirm recharge" (confirmation page), "Recharge successful" (receipt page).
+Amounts are shown with two decimals (599 -> "599.00").
 For a balance after recharging N, expected_contains must be "{pre_balance+N}" (the previous balance plus N,
-filled in at run time). Use 9876543210 as the mobile number unless the requirement names another.
+filled in at run time).
 
 Schema:
 {"scenario_name": "snake_case_name", "target_page": "recharge|confirmation|receipt",
@@ -103,8 +113,8 @@ def generate_scenario(requirement: str):
 
 
 QA_DISABLED_MESSAGE = (
-    "Browser test runs are only available in the local setup (they need Node.js, Playwright and the recharge "
-    "app running), so they are switched off in this deployment."
+    "Browser test runs are only available in the local setup (they need Node.js, Playwright and the console "
+    "running), so they are switched off in this deployment."
 )
 
 

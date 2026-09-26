@@ -319,6 +319,15 @@ describe("hosting the React app", () => {
     }
   });
 
+  it("answers a missing file with 404, not the app shell (a stale asset URL must not load HTML as a script)", async () => {
+    const a = build({ staticDir: dist() });
+    for (const url of ["/assets/app-old999.js", "/assets/app-old999.css?v=1", "/favicon.png"]) {
+      const res = await a.inject({ method: "GET", url });
+      expect(res.statusCode, url).toBe(404);
+      expect(res.body).not.toContain("Billing Ops");
+    }
+  });
+
   it("still answers unknown API paths with JSON, not the app shell", async () => {
     const a = build({ staticDir: dist() });
     const cookie = await signIn(a);

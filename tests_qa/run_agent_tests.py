@@ -6,7 +6,7 @@
                                                           # plain-English requirement, then run them
     python -m tests_qa.run_agent_tests --headed           # watch the browser
 
-Needs: the billing API (FASTAPI_BASE_URL, default :8000), the recharge UI (RECHARGE_UI_URL, default :8501), Node.js.
+Needs: the billing API (BILLING_API_URL, default :8000), the console (RECHARGE_UI_URL, default :8080), Node.js.
 `execute_scenario()` is also what the chat graph's testgen node calls.
 """
 import argparse
@@ -26,6 +26,13 @@ from tests_qa.urls import is_allowed_navigation, recharge_ui_url
 UI_URL_ENV = "RECHARGE_UI_URL"
 PLACEHOLDER = re.compile(r"\{pre_balance(?:\s*\+\s*([\d.]+))?\}")
 DEFAULT_MSISDN = "9876543210"
+CUSTOMER_PAGE = re.compile(r"/customers/(\d{10})(?:\D|$)")
+
+
+def contains(actual: str, expected: str) -> bool:
+    """Whether the page text has the expected text. The console groups thousands (₹1,234.50); the numbers are compared
+    without that grouping so a balance crossing 1,000 does not fail a passing flow."""
+    return expected in actual or expected.replace(",", "") in actual.replace(",", "")
 
 
 def ui_url() -> str:
@@ -42,12 +49,12 @@ def resolve(expression: str, pre_balance: float | None) -> str:
 
 
 def infer_msisdn(scenario: dict) -> str:
-    """The subscriber under test: scenario `setup`, else whatever the steps type into the number field."""
+    """The subscriber under test: scenario `setup`, else the number in the customer page the steps open."""
     if scenario.get("setup", {}).get("msisdn"):
         return scenario["setup"]["msisdn"]
     for step in scenario["steps"]:
-        if step["action"] == "fill" and step["target"] == SEL["msisdn"] and re.fullmatch(r"\d{10}", step.get("value") or ""):
-            return step["value"]
+        if step["action"] == "navigate" and (found := CUSTOMER_PAGE.search(step["target"])):
+            return found.group(1)
     return DEFAULT_MSISDN
 
 
@@ -63,14 +70,14 @@ def _result(status: str, detail: str, evidence_path: str | None = None, **extra)
 
 def _preflight() -> str | None:
     try:
-        requests.get(f"{api_base()}/docs", timeout=3)
+        requests.get(f"{api_base()}/subscribers", timeout=3).raise_for_status()
     except requests.RequestException:
-        return f"billing API not reachable at {api_base()} (uvicorn mock_api.main:app --port 8000)"
+        return f"billing API not reachable at {api_base()} (cd services/billing && npm run serve)"
     try:
-        if requests.get(f"{ui_url()}/_stcore/health", timeout=3).text.strip() != "ok":
+        if requests.get(f"{ui_url()}/api/health", timeout=3).json().get("status") != "ok":
             raise requests.RequestException("unhealthy")
-    except requests.RequestException:
-        return f"recharge UI not reachable at {ui_url()} (streamlit run ui/recharge_app.py --server.port 8501)"
+    except (requests.RequestException, ValueError):
+        return f"console not reachable at {ui_url()} (cd services/billing && npm run serve, with the built web/dist)"
     return None
 
 
@@ -99,7 +106,7 @@ async def _execute(scenario: dict, headless: bool = True) -> dict:
             expected = resolve(scenario["assertion"]["expected_contains"], pre_balance)
             actual = await client.read_text(scenario["assertion"]["target"])
             evidence = await client.screenshot(name)
-            if expected not in actual:
+            if not contains(actual, expected):
                 return _result("fail", f"Expected {expected!r} in {actual!r}", evidence, steps_completed=completed)
 
             detail = f"Expected {expected!r} found in {actual!r}"
