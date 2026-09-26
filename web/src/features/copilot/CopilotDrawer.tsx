@@ -164,7 +164,7 @@ export function CopilotDrawer({ open, onOpenChange, msisdn }: Props) {
         )}
         {unavailable && (
           <p role="alert" data-testid="copilot-unavailable" className="border-b border-border bg-danger-soft px-5 py-2 text-xs text-danger">
-            The assistant is not reachable right now. You can still use the rest of the console.
+            The assistant is not reachable right now. Running locally? Start everything with <code className="font-mono">python scripts/dev.py</code>. The rest of the console still works.
           </p>
         )}
 
@@ -307,7 +307,7 @@ function ResponseDetails({ response }: { response: ChatResponse }) {
           <p className="text-xs text-muted-foreground">{response.test_result.detail}</p>
           {evidence && (
             <a href={evidence} target="_blank" rel="noreferrer" title="Open the full screenshot">
-              <img src={evidence} alt="Screenshot of the finished browser test" data-testid="copilot-evidence" loading="lazy" className="w-full rounded border border-border" />
+              <img src={evidence} alt="Screenshot of the finished browser test" data-testid="copilot-evidence" loading="lazy" onLoad={(event) => event.currentTarget.scrollIntoView({ block: "nearest" })} className="w-full rounded border border-border" />
             </a>
           )}
         </div>
@@ -352,7 +352,7 @@ function ResponseDetails({ response }: { response: ChatResponse }) {
 
 /** The model often answers with **bold** and `code`. Rendered as React nodes, never as HTML, so the text stays inert. */
 export function renderInline(text: string): ReactNode {
-  return text.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g).map((part, index) => {
+  return text.replace(/[\u202f\u00a0]/g, " ").split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g).map((part, index) => {
     if (part.length > 4 && part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
     if (part.length > 2 && part.startsWith("`") && part.endsWith("`")) {
       return (

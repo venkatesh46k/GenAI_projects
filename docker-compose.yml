@@ -1,0 +1,37 @@
+# The same architecture as the local setup, as two containers:
+#   web  Node: the console (React), sign-in, /api, and the billing API
+#   ai   Python: the agents behind the AI service
+# Only the console is published. The AI service and the billing API are reachable on the compose network only.
+#
+#   cp .env.example .env        # set ACTIVE_PROVIDER and that provider's API key (Ollama is not in these images)
+#   docker compose up --build
+#   open http://localhost:8080
+
+services:
+  web:
+    build: { context: ., target: web }
+    ports: ["8080:7860"]
+    environment:
+      AI_SERVICE_URL: http://ai:8100
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-compose-internal-token}
+      BILLING_HOST: 0.0.0.0        # the AI service calls the billing API from its own container
+      BILLING_DB_PATH: /data/billing.db
+      SESSION_SECRET: ${SESSION_SECRET:-}   # empty: a random one per start (everyone is signed out on restart)
+    volumes:
+      - billing-data:/data
+    restart: unless-stopped
+
+  ai:
+    build: { context: ., target: ai }
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BILLING_API_URL: http://web:8000
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-compose-internal-token}
+      ENABLE_QA_RUNS: "0"          # browser tests need Playwright and run locally only
+    depends_on: [web]
+    restart: unless-stopped
+
+volumes:
+  billing-data:

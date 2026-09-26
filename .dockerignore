@@ -1,0 +1,17 @@
+.git
+.venv
+.venv-langflow
+.env
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+data/billing.db*
+logs
+eval/results
+langflow
+tests_qa/evidence
+.playwright-mcp
+docs/images
+*.md
+!requirements-runtime.txt

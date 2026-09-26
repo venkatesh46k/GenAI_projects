@@ -71,6 +71,11 @@ describe("parseSse", () => {
 });
 
 describe("renderInline", () => {
+  it("turns non-breaking spaces from the model into normal spaces", () => {
+    const { container } = render(<p>{renderInline("below\u202f\u20b95 and\u00a0more")}</p>);
+    expect(container.textContent).toBe("below \u20b95 and more");
+  });
+
   it("renders bold and code as elements and leaves HTML inert", () => {
     const { container } = render(<p>{renderInline("Balance is **₹45.50** via `GET /balance` <img src=x onerror=alert(1)>")}</p>);
     expect(container.querySelector("strong")).toHaveTextContent("₹45.50");

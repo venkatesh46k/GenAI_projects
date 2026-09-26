@@ -21,7 +21,7 @@ _lock = threading.Lock()
 def cached_retriever(k: int = 4):
     """Process-wide retriever so agents don't reload the embedding model on every call.
 
-    Thread-safe on purpose: a threaded server (Streamlit) can make two first calls at once, and two Chroma clients for
+    Thread-safe on purpose: a threaded server (uvicorn's worker threads) can make two first calls at once, and two Chroma clients for
     the same folder tear each other down ("RustBindingsAPI has no attribute 'bindings'"). functools.lru_cache does not
     prevent that, because it does not lock while the function runs.
     """

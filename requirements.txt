@@ -8,7 +8,6 @@ chromadb
 sentence-transformers
 fastapi
 uvicorn
-streamlit
 deepeval
 pydantic
 python-dotenv
@@ -18,3 +17,6 @@ langchain-chroma
 langchain-huggingface
 click<8.4
 mcp
+langchain-groq
+langchain-openai
+pillow

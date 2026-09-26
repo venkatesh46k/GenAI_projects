@@ -132,9 +132,9 @@ def run_in_fresh_loop(coroutine_factory):
     """Run a coroutine on its own event loop in a worker thread, whatever the host's asyncio policy is.
 
     Why not asyncio.run(): the MCP client spawns the Playwright server as a subprocess, and on Windows only the
-    Proactor loop can do that. Streamlit's server (Tornado) switches the process to a Selector loop, where
-    subprocess creation raises NotImplementedError, so browser tests worked from a script but silently failed when
-    triggered from the console. An explicit loop in a dedicated thread also works when called from a thread that is
+    Proactor loop can do that. A server that switches the process to a Selector loop (Streamlit's Tornado did, which is how this was found)
+    makes subprocess creation raise NotImplementedError, so browser tests worked from a script but silently failed
+    when triggered from the app. An explicit loop in a dedicated thread also works when called from a thread that is
     already running an event loop.
     """
 

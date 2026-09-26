@@ -111,7 +111,7 @@ class MCPClient:
         return result, text
 
     async def _settle(self) -> None:
-        # Streamlit reruns the script after every interaction; give it a moment before the next step.
+        # Let React re-render (and any request finish) after an interaction before the next step.
         if self.settle_seconds:
             await self._call("browser_wait_for", time=self.settle_seconds)
 
@@ -130,11 +130,6 @@ class MCPClient:
         """Choose an <option> of a native <select> by its value (for example a plan id)."""
         await self._call("browser_select_option", selector, element=selector, target=selector, values=[value])
         await self._settle()
-
-    async def select(self, selector: str, option: str) -> None:
-        """Legacy: a Streamlit dropdown (click it, then click the option)."""
-        await self.click(selector)
-        await self.click(f'[role="option"]:has-text("{option}")')
 
     async def wait_for_text(self, text: str) -> None:
         try:

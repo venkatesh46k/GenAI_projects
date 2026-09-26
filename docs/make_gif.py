@@ -8,8 +8,9 @@ from PIL import Image
 
 IMAGES = os.path.join(os.path.dirname(__file__), "images")
 FRAMES = [
-    "01_customer_360.png", "02_customer_disputes.png", "03_customer_barred.png", "04_recharge_form.png",
-    "05_recharge_confirm.png", "06_recharge_receipt.png", "08_copilot_2.png", "09_copilot_qa_1.png",
+    "01_login.png", "02_customers.png", "03_customer_360.png", "05_customer_barred.png", "06_command_palette.png",
+    "07_recharge_details.png", "08_recharge_review.png", "09_recharge_receipt.png", "10_customer_dark.png",
+    "12_copilot_answer.png", "13_copilot_browser_test.png",
 ]
 WIDTH = 1000  # keeps the file small enough to embed in a README
 

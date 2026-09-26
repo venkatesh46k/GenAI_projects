@@ -24,7 +24,8 @@ $env:PYTHONPATH = "."
 python -m tests_qa.run_agent_tests                     # the five hand-written scenarios (deterministic)
 python -m tests_qa.run_agent_tests --generate          # the Test-Gen agent writes the steps from plain English
 python -m tests_qa.run_agent_tests --headed valid_recharge_e2e     # watch one run
-pytest tests_qa                                        # unit tests + (if services are up) the e2e tests
+pytest tests_qa                                        # offline unit tests (the e2e tests are opt-in)
+$env:RUN_E2E = "1"; pytest tests_qa                   # also the e2e tests: they recharge real rows, so use a demo database
 ```
 
 From the chat graph: a request such as *"Verify that recharging 199 for 9876543210 updates the balance"* is routed to

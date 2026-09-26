@@ -4,8 +4,9 @@ Needs the billing API, the console (built front end) and Node.js; skipped (not f
 
     cd web && npm run build
     cd services/billing && npm run seed && npm run serve       # billing API :8000, console :8080
-    pytest tests_qa/test_scenarios_e2e.py
+    RUN_E2E=1 pytest tests_qa/test_scenarios_e2e.py       # PowerShell: $env:RUN_E2E="1"
 """
+import os
 import shutil
 
 import pytest
@@ -15,8 +16,12 @@ from tests_qa.scenarios import SCENARIOS
 
 pytestmark = pytest.mark.e2e
 
-_unavailable = None if shutil.which("npx") or shutil.which("npx.cmd") else "npx (Node.js) not installed"
-_unavailable = _unavailable or _preflight()
+# Opt-in: the scenarios really recharge the subscriber, in whatever database the running console uses.
+if os.getenv("RUN_E2E") != "1":
+    _unavailable = "set RUN_E2E=1 to run (these scenarios recharge real rows in the running console's database)"
+else:
+    _unavailable = None if shutil.which("npx") or shutil.which("npx.cmd") else "npx (Node.js) not installed"
+    _unavailable = _unavailable or _preflight()
 
 
 @pytest.mark.skipif(_unavailable is not None, reason=str(_unavailable))
