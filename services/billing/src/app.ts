@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 import type { z } from "zod";
+import { chatRoutes, type AiConfig } from "./chat.js";
 import { all, get, run, transaction } from "./db.js";
 import { HttpError } from "./errors.js";
 import {
@@ -42,8 +43,19 @@ function parse<S extends z.ZodType>(schema: S, data: unknown, where: "body" | "q
  * Build the billing API around an open database. Pure construction (no listening), so tests can drive it with
  * `app.inject(...)` and the server file only adds the network.
  */
-export function buildApp(db: DatabaseSync, options: FastifyServerOptions = {}): FastifyInstance {
-  const app = Fastify({ logger: false, requestIdHeader: "x-request-id", genReqId: () => randomUUID(), ...options });
+export interface AppConfig {
+  /** The AI service the chat routes forward to. Without it they answer 503 "not configured". */
+  ai?: AiConfig;
+}
+
+export function buildApp(db: DatabaseSync, options: FastifyServerOptions = {}, config: AppConfig = {}): FastifyInstance {
+  const app = Fastify({
+    logger: false,
+    requestIdHeader: "x-request-id",
+    genReqId: () => randomUUID(),
+    bodyLimit: 64 * 1024, // every request here is a small JSON document; refuse anything larger
+    ...options,
+  });
 
   // An empty body with a JSON content type is valid (POST /dispute/{id}/escalate takes none); bad JSON is a 422.
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
@@ -62,11 +74,19 @@ export function buildApp(db: DatabaseSync, options: FastifyServerOptions = {}): 
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof HttpError) return reply.code(error.status).send({ detail: error.detail });
+    // Client-side problems Fastify detects itself (rate limit, oversized body, wrong content type): a safe message.
+    const status = (error as { statusCode?: number }).statusCode;
+    if (typeof status === "number" && status >= 400 && status < 500) {
+      const detail = status === 429 ? "Too many requests. Please slow down." : status === 413 ? "Request body too large" : "Bad request";
+      return reply.code(status).send({ detail });
+    }
     request.log.error({ err: error }, "unhandled error");
     return reply.code(500).send({ detail: "Internal Server Error" }); // never leak internals to the caller
   });
 
   app.get("/health", async () => ({ status: "ok" }));
+
+  void app.register(chatRoutes(config.ai));
 
   // ------------------------------------------------------------------ subscribers, plans
 

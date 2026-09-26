@@ -6,7 +6,18 @@ const port = Number(process.env.PORT ?? 8000);
 const host = process.env.HOST ?? "127.0.0.1";
 
 const db = openDb();
-const app = buildApp(db, { logger: { level: process.env.LOG_LEVEL?.toLowerCase() ?? "info" } });
+const app = buildApp(
+  db,
+  { logger: { level: process.env.LOG_LEVEL?.toLowerCase() ?? "info" } },
+  {
+    ai: {
+      url: process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8100",
+      token: process.env.AI_SERVICE_TOKEN || undefined,
+      timeoutMs: Number(process.env.AI_TIMEOUT_MS ?? 300_000), // the first answer after a cold start loads the models
+      rateLimitPerMinute: Number(process.env.CHAT_RATE_LIMIT_PER_MINUTE ?? 20),
+    },
+  },
+);
 
 async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, "shutting down");

@@ -396,3 +396,13 @@ def test_escalation_for_an_unknown_number_says_so(api):
 
     out = escalation_agent.escalation_node(AgentState(query="get me a manager", msisdn="0000000000"))
     assert "couldn't find a subscriber" in out["raw_answer"] and "escalation_ticket_id" not in out
+
+
+def test_billing_api_url_is_the_preferred_setting_and_the_old_name_still_works(monkeypatch):
+    from agents.utils import api_base
+
+    monkeypatch.delenv("BILLING_API_URL", raising=False)
+    monkeypatch.setenv("FASTAPI_BASE_URL", "http://localhost:8000")
+    assert api_base() == "http://127.0.0.1:8000"  # legacy name
+    monkeypatch.setenv("BILLING_API_URL", "http://billing.internal:9000")
+    assert api_base() == "http://billing.internal:9000"  # the new name wins
