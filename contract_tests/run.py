@@ -52,7 +52,17 @@ def stop(proc: subprocess.Popen) -> None:
 def run_one(impl: str) -> int:
     port = free_port()
     db_dir = tempfile.mkdtemp(prefix=f"contract-{impl}-")
-    env = {**os.environ, "BILLING_DB_PATH": os.path.join(db_dir, "billing.db"), "PORT": str(port), "PYTHONPATH": ROOT}
+    env = {
+        **os.environ,
+        "BILLING_DB_PATH": os.path.join(db_dir, "billing.db"),
+        "PORT": str(port),
+        "PYTHONPATH": ROOT,
+        # The Node service has two listeners: BILLING_PORT is the internal billing API under test; PORT is the public web
+        # server, which is not part of this contract. Give it its own free port so it cannot collide with anything.
+        "BILLING_PORT": str(port),
+    }
+    if impl == "node":
+        env["PORT"] = str(free_port())
     seed_cmd, server_cmd, cwd = commands(impl, port)
     print(f"\n=== {impl} implementation on port {port} ===", flush=True)
     try:

@@ -14,6 +14,32 @@ export const DisputeBody = z.object({
   amount_disputed: z.number().min(0),
 });
 
+// ---- public (browser-facing) API ----
+
+export const ROLES = ["agent", "team_lead"] as const;
+export type Role = (typeof ROLES)[number];
+
+export const LoginBody = z.strictObject({
+  name: z
+    .string()
+    .trim()
+    .min(2)
+    .max(40)
+    .regex(/^[\p{L}][\p{L} .'-]*$/u, "Use letters, spaces, dots, apostrophes and hyphens"),
+  role: z.enum(ROLES),
+});
+
+export const CustomerRechargeBody = z.strictObject({
+  amount: z.number(),
+  plan_id: z.string().nullable().optional(),
+});
+
+export const CustomersQuery = z.object({
+  q: z.string().max(20).optional(),
+  status: z.enum(["active", "barred", "expired"]).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+
 const limit = (fallback: number) => z.coerce.number().int().min(1).max(500).default(fallback);
 
 export const CdrQuery = z.object({ limit: limit(10) });
@@ -92,4 +118,17 @@ export interface TransactionItem {
 export interface DisputeSummary extends DisputeDetail {
   msisdn: string;
   created_at: string;
+}
+
+export interface CustomerOverview {
+  subscriber: SubscriberItem;
+  plan: PlanResponse | null;
+  usage: CdrItem[];
+  transactions: TransactionItem[];
+  disputes: DisputeSummary[];
+}
+
+export interface SessionUser {
+  name: string;
+  role: Role;
 }

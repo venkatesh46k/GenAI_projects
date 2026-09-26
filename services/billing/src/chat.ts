@@ -1,5 +1,4 @@
 import { Readable } from "node:stream";
-import rateLimit from "@fastify/rate-limit";
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { HttpError } from "./errors.js";
@@ -78,8 +77,6 @@ async function* rewriteEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<
 export function chatRoutes(ai: AiConfig | undefined): FastifyPluginAsync {
   return async (app: FastifyInstance) => {
     const limit = { max: ai?.rateLimitPerMinute ?? 20, timeWindow: "1 minute" };
-    await app.register(rateLimit, { global: false });
-
     const doFetch = ai?.fetch ?? fetch;
 
     async function callAi(path: string, init: RequestInit, requestId: string, signal?: AbortSignal): Promise<Response> {

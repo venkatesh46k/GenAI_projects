@@ -1,9 +1,10 @@
 import type { FastifyInstance } from "fastify";
+import type { LightMyRequestResponse } from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildApp } from "../src/app.js";
 import type { AiConfig } from "../src/chat.js";
 import { openDb } from "../src/db.js";
 import { seed } from "../src/seed.js";
+import { buildWebApp } from "../src/web.js";
 
 const AI_RESPONSE = {
   answer: "15 days.",
@@ -25,11 +26,29 @@ const json = (body: unknown, status = 200) =>
 
 let app: FastifyInstance | undefined;
 
+const SECRET = "test-secret-".repeat(4);
+const LOGIN = { name: "Test Agent", role: "agent" };
+
+/** The public web server, with the AI service faked. Requests are signed in automatically (see `unauthenticated`). */
 function build(fetchStub?: FetchStub, overrides: Partial<AiConfig> = {}) {
   const db = openDb(":memory:");
   seed(db);
-  app = buildApp(db, {}, fetchStub ? { ai: { url: "http://ai.internal:8100", timeoutMs: 5000, fetch: fetchStub as never, ...overrides } } : {});
-  return app;
+  const a = buildWebApp(
+    db,
+    {},
+    {
+      sessionSecret: SECRET,
+      staticDir: "/nonexistent",
+      ai: fetchStub ? { url: "http://ai.internal:8100", timeoutMs: 5000, fetch: fetchStub as never, ...overrides } : undefined,
+    },
+  );
+  const raw = a.inject.bind(a) as (opts: unknown) => Promise<LightMyRequestResponse>;
+  let cookie: string | undefined;
+  (a as unknown as { inject: unknown }).inject = async (opts: { headers?: Record<string, string> }) => {
+    cookie ??= `session=${(await raw({ method: "POST", url: "/api/session", payload: LOGIN })).cookies[0]!.value}`;
+    return raw({ ...opts, headers: { cookie, ...opts.headers } });
+  };
+  return a;
 }
 
 afterEach(async () => {
@@ -160,9 +179,16 @@ describe("chat failure handling: every failure is a safe, specific message", () 
     expect(res.json().detail).toContain("not configured");
   });
 
-  it("does not disturb the billing endpoints", async () => {
+  it("keeps the customer screens working while the assistant is down", async () => {
     const a = build(vi.fn(async () => Promise.reject(new Error("down"))));
-    expect((await a.inject({ method: "GET", url: "/balance/9876543210" })).statusCode).toBe(200);
+    expect((await a.inject({ method: "GET", url: "/api/customers/9876543210/overview" })).statusCode).toBe(200);
+  });
+
+  it("does not expose the internal billing routes on the public server", async () => {
+    const a = build(vi.fn(async () => json(AI_RESPONSE)));
+    for (const [method, url] of [["GET", "/balance/9876543210"], ["GET", "/subscribers"], ["POST", "/recharge"], ["GET", "/cdr/9876543210"]] as const) {
+      expect((await a.inject({ method, url, payload: method === "POST" ? { msisdn: "9876543210", amount: 500 } : undefined })).statusCode).toBe(404);
+    }
   });
 });
 
@@ -227,10 +253,17 @@ describe("POST /api/chat/stream", () => {
     const a = build(fetchStub as never);
     const address = await a.listen({ port: 0, host: "127.0.0.1" });
 
+    const login = await fetch(`${address}/api/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(LOGIN),
+    });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
+
     const controller = new AbortController();
     const request = fetch(`${address}/api/chat/stream`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ query: "hi" }),
       signal: controller.signal,
     }).catch(() => undefined);
@@ -282,7 +315,7 @@ describe("rate limiting", () => {
     expect(statuses).toEqual([200, 200, 200, 429, 429]);
     const limited = await chat(a, { query: "hi" });
     expect(limited.json()).toEqual({ detail: "Too many requests. Please slow down." });
-    expect((await a.inject({ method: "GET", url: "/balance/9876543210" })).statusCode).toBe(200); // billing is untouched
+    expect((await a.inject({ method: "GET", url: "/api/customers" })).statusCode).toBe(200); // other routes are untouched
   });
 });
 
