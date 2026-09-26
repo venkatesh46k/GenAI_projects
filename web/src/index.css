@@ -1,0 +1,114 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* Dark mode is a class on <html>, set by /theme-init.js before paint and by the theme toggle afterwards. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens. One set per theme; every component uses these names, never raw colours. */
+:root {
+  --background: #f7f7f8;
+  --foreground: #1c1d21;
+  --card: #ffffff;
+  --card-foreground: #1c1d21;
+  --border: #e4e4e8;
+  --input: #d9d9df;
+  --muted: #f0f0f3;
+  --muted-foreground: #666a76;
+  --primary: #5b5bd6;
+  --primary-foreground: #ffffff;
+  --accent: #eeeefb;
+  --accent-foreground: #3d3db0;
+  --ring: #5b5bd6;
+  --success: #1a7f4b;
+  --success-soft: #e6f5ec;
+  --warning: #a35a06;
+  --warning-soft: #fdf1dc;
+  --danger: #c12f2a;
+  --danger-soft: #fdeceb;
+  --info: #2a62c1;
+  --info-soft: #e8f0fd;
+  --shadow: 0 1px 2px rgb(16 18 27 / 0.05), 0 1px 3px rgb(16 18 27 / 0.06);
+}
+
+.dark {
+  --background: #0e0f11;
+  --foreground: #ececef;
+  --card: #16171a;
+  --card-foreground: #ececef;
+  --border: #26282d;
+  --input: #34363d;
+  --muted: #1d1e22;
+  --muted-foreground: #8c909b;
+  --primary: #7373f0;
+  --primary-foreground: #ffffff;
+  --accent: #23243d;
+  --accent-foreground: #b9b9ff;
+  --ring: #7373f0;
+  --success: #45d488;
+  --success-soft: #12261b;
+  --warning: #f0b048;
+  --warning-soft: #2b2010;
+  --danger: #ff7a73;
+  --danger-soft: #2d1614;
+  --info: #6ea1ff;
+  --info-soft: #14203a;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --shadow-card: var(--shadow);
+  --radius-lg: 0.75rem;
+  --radius-md: 0.5rem;
+  --radius-sm: 0.375rem;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01"; /* Inter's single-storey a and open digits: calmer numbers in tables */
+  }
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 28%, transparent);
+  }
+  /* Numbers line up in columns. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

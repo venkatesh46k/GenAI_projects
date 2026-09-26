@@ -1,3 +1,4 @@
+import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { buildApp } from "./app.js";
 import { DEFAULT_DB_PATH, openDb } from "./db.js";
@@ -28,7 +29,7 @@ const internal = buildApp(db, { logger });
 const web = buildWebApp(db, { logger }, {
   sessionSecret,
   cookieSecure: process.env.COOKIE_SECURE === "1",
-  staticDir: process.env.WEB_DIST || undefined,
+  staticDir: process.env.WEB_DIST ? path.resolve(process.env.WEB_DIST) : undefined,
   ai: {
     url: process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8100",
     token: process.env.AI_SERVICE_TOKEN || undefined,

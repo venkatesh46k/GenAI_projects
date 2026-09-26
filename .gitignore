@@ -16,3 +16,6 @@ services/billing/node_modules/
 services/billing/dist/
 data/billing.db-wal
 data/billing.db-shm
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
