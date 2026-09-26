@@ -12,7 +12,10 @@ _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.I)
 
 def api_base() -> str:
     # Read at call time so tests and .env changes are picked up.
-    return os.getenv("FASTAPI_BASE_URL", "http://localhost:8000")
+    url = os.getenv("FASTAPI_BASE_URL", "http://localhost:8000")
+    # On Windows "localhost" resolves to IPv6 (::1) first; nothing listens there, so every request waits ~2 s
+    # before falling back to IPv4, where uvicorn listens. Six calls to draw one page = 12 s. Use loopback directly.
+    return re.sub(r"//localhost(?=[:/]|$)", "//127.0.0.1", url)
 
 
 def parse_json(text: str) -> Optional[dict]:

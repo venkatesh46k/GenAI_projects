@@ -64,19 +64,38 @@ def _selector_problem(message: str, target: str) -> str:
 
 
 class MCPClient:
-    def __init__(self, headless: bool = True, settle_seconds: float = 0.5, evidence_dir: str = EVIDENCE_DIR):
+    def __init__(
+        self,
+        headless: bool = True,
+        settle_seconds: float = 0.5,
+        evidence_dir: str = EVIDENCE_DIR,
+        action_timeout_ms: int | None = None,
+    ):
         self.headless = headless
+        self.action_timeout_ms = action_timeout_ms  # the server's default is 5 s per action / wait_for
         self.settle_seconds = settle_seconds
         self.evidence_dir = evidence_dir
         self._stack = AsyncExitStack()
         self._session: ClientSession | None = None
 
+    def server_args(self) -> list[str]:
+        # --isolated: every run gets its own throwaway browser profile. Without it the server keeps one persistent
+        # profile on disk, so two concurrent runs (two agents, or a QA run while another browser session is open) fail
+        # with "Browser is already in use for ...\mcp-chrome-..., use --isolated to run multiple instances".
+        args = ["-y", "@playwright/mcp@latest", "--isolated"]
+        if self.headless:
+            args.append("--headless")
+        if self.action_timeout_ms:
+            args.append(f"--timeout-action={self.action_timeout_ms}")
+        return args
+
     async def __aenter__(self) -> "MCPClient":
         npx = shutil.which("npx") or shutil.which("npx.cmd")
         if not npx:
             raise RuntimeError("npx not found: install Node.js 18+ to run the Playwright MCP server")
-        args = ["-y", "@playwright/mcp@latest"] + (["--headless"] if self.headless else [])
-        read, write = await self._stack.enter_async_context(stdio_client(StdioServerParameters(command=npx, args=args)))
+        read, write = await self._stack.enter_async_context(
+            stdio_client(StdioServerParameters(command=npx, args=self.server_args()))
+        )
         self._session = await self._stack.enter_async_context(ClientSession(read, write))
         await self._session.initialize()
         return self
@@ -116,6 +135,10 @@ class MCPClient:
             await self._call("browser_wait_for", text, text=text)
         except StepFailure as exc:
             raise StepFailure(f"text never appeared: {text!r} ({exc})") from exc
+
+    async def wait_until_gone(self, text: str) -> None:
+        """Wait for a piece of text (e.g. a spinner message) to disappear: the reliable 'it finished' signal."""
+        await self._call("browser_wait_for", text, textGone=text)
 
     async def read_text(self, selector: str) -> str:
         _, text = await self._call("browser_snapshot", selector, target=selector)

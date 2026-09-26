@@ -18,20 +18,18 @@ import sys
 
 import requests
 
+from agents.utils import api_base
 from tests_qa.mcp_client import MCPClient, StepFailure
 from tests_qa.scenarios import BY_NAME, SCENARIOS, SEL
+from tests_qa.urls import is_allowed_navigation, recharge_ui_url
 
-API_BASE_ENV, UI_URL_ENV = "FASTAPI_BASE_URL", "RECHARGE_UI_URL"
+UI_URL_ENV = "RECHARGE_UI_URL"
 PLACEHOLDER = re.compile(r"\{pre_balance(?:\s*\+\s*([\d.]+))?\}")
 DEFAULT_MSISDN = "9876543210"
 
 
-def api_base() -> str:
-    return os.getenv(API_BASE_ENV, "http://localhost:8000")
-
-
 def ui_url() -> str:
-    return os.getenv(UI_URL_ENV, "http://localhost:8501")
+    return recharge_ui_url()
 
 
 def resolve(expression: str, pre_balance: float | None) -> str:
@@ -78,6 +76,9 @@ def _preflight() -> str | None:
 
 async def _execute(scenario: dict, headless: bool = True) -> dict:
     name = scenario["scenario_name"]
+    for step in scenario["steps"]:  # defence in depth: also refuse hand-written or otherwise unvalidated scenarios
+        if step["action"] == "navigate" and not is_allowed_navigation(step["target"]):
+            return _result("fail", f"navigation to {step['target']!r} is not allowed: tests may only visit {ui_url()}")
     if problem := _preflight():
         return _result("fail", problem)
 
@@ -120,15 +121,31 @@ async def _execute(scenario: dict, headless: bool = True) -> dict:
             return _result("fail", f"could not evaluate the scenario: {exc}", steps_completed=completed)
 
 
-def execute_scenario(scenario: dict, headless: bool = True) -> dict:
-    """Run one scenario; never raises. Safe to call from a running event loop or from plain sync code."""
-    try:
+def run_in_fresh_loop(coroutine_factory):
+    """Run a coroutine on its own event loop in a worker thread, whatever the host's asyncio policy is.
+
+    Why not asyncio.run(): the MCP client spawns the Playwright server as a subprocess, and on Windows only the
+    Proactor loop can do that. Streamlit's server (Tornado) switches the process to a Selector loop, where
+    subprocess creation raises NotImplementedError, so browser tests worked from a script but silently failed when
+    triggered from the console. An explicit loop in a dedicated thread also works when called from a thread that is
+    already running an event loop.
+    """
+
+    def run():
+        loop = asyncio.ProactorEventLoop() if sys.platform == "win32" else asyncio.new_event_loop()
         try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(_execute(scenario, headless))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(asyncio.run, _execute(scenario, headless)).result()
+            return loop.run_until_complete(coroutine_factory())
+        finally:
+            loop.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(run).result()
+
+
+def execute_scenario(scenario: dict, headless: bool = True) -> dict:
+    """Run one scenario; never raises. Safe from any thread and under any asyncio policy."""
+    try:
+        return run_in_fresh_loop(lambda: _execute(scenario, headless))
     except Exception as exc:  # the MCP server failed to start, Node missing, ...
         return _result("fail", f"execution error: {type(exc).__name__}: {exc}")
 

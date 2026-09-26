@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime
 
+from typing import Optional
+
 from fastapi import FastAPI, HTTPException
 
 from mock_api.db import get_connection
@@ -10,10 +12,13 @@ from mock_api.models import (
     DisputeDetail,
     DisputeRequest,
     DisputeResponse,
+    DisputeSummary,
     EscalateResponse,
     PlanResponse,
     RechargeRequest,
     RechargeResponse,
+    SubscriberItem,
+    TransactionItem,
 )
 
 app = FastAPI(title="Prepaid Billing Mock API")
@@ -112,3 +117,41 @@ def escalate_dispute(dispute_id: str):
     conn.commit()
     conn.close()
     return EscalateResponse(dispute_id=dispute_id, status="escalated", ticket_id=ticket_id)
+
+
+# ---- Read-only endpoints for the console (not part of the agents' tool contract) ----
+
+@app.get("/subscribers", response_model=list[SubscriberItem])
+def list_subscribers(limit: int = 100):
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM subscribers ORDER BY msisdn LIMIT ?", (limit,)).fetchall()
+    conn.close()
+    return [SubscriberItem(**dict(r)) for r in rows]
+
+
+@app.get("/transactions/{msisdn}", response_model=list[TransactionItem])
+def get_transactions(msisdn: str, limit: int = 20):
+    conn = get_connection()
+    if not conn.execute("SELECT 1 FROM subscribers WHERE msisdn=?", (msisdn,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    rows = conn.execute(
+        "SELECT txn_id, type, amount, balance_after, timestamp FROM transactions WHERE msisdn=? "
+        "ORDER BY timestamp DESC LIMIT ?",
+        (msisdn, limit),
+    ).fetchall()
+    conn.close()
+    return [TransactionItem(**dict(r)) for r in rows]
+
+
+@app.get("/disputes", response_model=list[DisputeSummary])
+def list_disputes(msisdn: Optional[str] = None, limit: int = 50):
+    conn = get_connection()
+    if msisdn:
+        rows = conn.execute(
+            "SELECT * FROM disputes WHERE msisdn=? ORDER BY created_at DESC LIMIT ?", (msisdn, limit)
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM disputes ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+    conn.close()
+    return [DisputeSummary(**dict(r)) for r in rows]

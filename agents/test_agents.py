@@ -53,6 +53,15 @@ def test_router_extracts_msisdn():
     assert router.router_node(AgentState(query="balance please"))["msisdn"] is None
 
 
+def test_router_keeps_a_number_supplied_by_the_caller(monkeypatch):
+    monkeypatch.setattr(router, "get_llm", lambda: pytest.fail("regex route expected"))
+    out = router.router_node(AgentState(query="what's my balance?", msisdn="9123456780"))
+    assert out["msisdn"] == "9123456780"
+    # a number in the query itself overrides the supplied one
+    out = router.router_node(AgentState(query="balance of 9876543210?", msisdn="9123456780"))
+    assert out["msisdn"] == "9876543210"
+
+
 def test_router_llm_fallback_and_default(monkeypatch):
     monkeypatch.setattr(router, "get_llm", lambda: FakeLLM("dispute"))
     out = router.router_node(AgentState(query="something ambiguous about my bill"))
@@ -249,6 +258,15 @@ def test_testgen_valid_scenario_is_executed(monkeypatch):
     assert "valid_recharge" in out["raw_answer"] and "passed" in out["raw_answer"]
 
 
+def test_testgen_can_be_switched_off_for_deployments_without_a_browser(monkeypatch):
+    from agents import testgen_agent
+
+    monkeypatch.setenv("ENABLE_QA_RUNS", "0")
+    monkeypatch.setattr(testgen_agent, "get_llm", lambda: pytest.fail("no LLM call when QA runs are disabled"))
+    out = testgen_agent.testgen_node(AgentState(query="Verify that recharging 199 updates the balance"))
+    assert "only available in the local setup" in out["raw_answer"] and "test_result" not in out
+
+
 def test_testgen_reports_a_failing_run_as_failed(monkeypatch):
     from agents import testgen_agent
     from tests_qa import run_agent_tests
@@ -329,3 +347,33 @@ def test_graph_confident_dispute_does_not_escalate(api, sop, monkeypatch):
     monkeypatch.setattr(dispute_agent, "get_llm", lambda: FakeLLM('{"explanation": "Dispute registered."}'))
     result = app.invoke({"query": "I was charged wrongly on 9876543210, Rs 199 refund"})
     assert "escalation_ticket_id" not in result and "Dispute registered" in result["moderated_answer"]
+
+
+# ---------- API base URL ----------
+
+@pytest.mark.parametrize(
+    "configured,expected",
+    [
+        ("http://localhost:8000", "http://127.0.0.1:8000"),
+        ("http://localhost", "http://127.0.0.1"),
+        ("http://localhost:8000/", "http://127.0.0.1:8000/"),
+        ("http://127.0.0.1:8000", "http://127.0.0.1:8000"),
+        ("https://billing.example.com", "https://billing.example.com"),
+        ("http://localhost.example.com", "http://localhost.example.com"),  # only the bare host is rewritten
+    ],
+)
+def test_api_base_avoids_the_windows_localhost_stall(monkeypatch, configured, expected):
+    from agents.utils import api_base
+
+    monkeypatch.setenv("FASTAPI_BASE_URL", configured)
+    assert api_base() == expected
+
+
+# ---------- currency: this is an Indian-rupee product ----------
+
+def test_prompts_that_state_amounts_pin_the_currency_to_rupees():
+    """Seen live: with no instruction the model wrote '$120.00'."""
+    from agents import billing_agent, dispute_agent
+
+    for prompt in (billing_agent.RESPONSE_PROMPT, dispute_agent.DISPUTE_PROMPT):
+        assert "rupees" in prompt and "₹" in prompt and "never" in prompt.lower()

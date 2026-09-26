@@ -7,6 +7,8 @@ from agents.utils import api_base
 RESPONSE_PROMPT = """You are a prepaid billing assistant. Given this raw API response,
 write a short, friendly, factual answer to the user's question. Do not add information
 not present in the API response.
+All money amounts are in Indian rupees: write them with the ₹ symbol (for example ₹120.00) and never
+use $ or any other currency.
 
 API RESPONSE (JSON): {api_response}
 USER QUESTION: {query}"""

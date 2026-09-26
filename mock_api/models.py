@@ -63,3 +63,28 @@ class EscalateResponse(BaseModel):
     dispute_id: str
     status: str
     ticket_id: str
+
+
+class SubscriberItem(BaseModel):
+    msisdn: str
+    plan_id: Optional[str]
+    balance: float
+    status: str
+    last_recharge_date: Optional[str]
+
+
+class TransactionItem(BaseModel):
+    txn_id: str
+    type: str
+    amount: float
+    balance_after: float
+    timestamp: str
+
+
+class DisputeSummary(BaseModel):
+    dispute_id: str
+    msisdn: str
+    reason: str
+    amount_disputed: float
+    status: str
+    created_at: str

@@ -74,7 +74,16 @@ def moderation_node(state: AgentState) -> dict:
     raw = state.get("raw_answer") or ""
     masked = mask_pii(raw)
 
-    verdict = classify_safety(masked) if masked.strip() else {"safe": True, "category": None}
+    if not masked.strip():
+        verdict = {"safe": True, "category": None}
+    elif state.get("route") == "testgen":
+        # Every testgen reply is assembled by code from fixed templates: a verdict ("Test 'x' FAILED. step 3 failed:
+        # selector not found ..."), "couldn't turn that into a test", or "browser tests are switched off". None is
+        # free-form model text. The LLM classifier judged such text "off-topic" and blocked it, hiding the very message
+        # the agent needed. PII masking above still applies.
+        verdict = {"safe": True, "category": None}
+    else:
+        verdict = classify_safety(masked)
     result = {
         "moderated_answer": masked if verdict["safe"] else BLOCKED_MESSAGE,
         "pii_masked": masked != raw,

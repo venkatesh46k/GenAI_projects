@@ -1,4 +1,6 @@
 """Offline tests for the QA agent: no browser, no Node, no running services (the MCP client is faked)."""
+import sys
+
 import pytest
 
 from agents.testgen_agent import TESTGEN_PROMPT, is_valid_scenario
@@ -228,3 +230,107 @@ def test_execute_scenario_is_safe_inside_a_running_event_loop(fake_env):
 def test_cli_rejects_unknown_scenario_names(capsys):
     assert runner.main(["no_such_scenario"]) == 2
     assert "unknown scenario" in capsys.readouterr().out
+
+
+# ---------- asyncio policy: the bug that made browser tests fail inside Streamlit on Windows ----------
+
+async def _spawn_child():
+    import asyncio
+    import sys
+
+    proc = await asyncio.create_subprocess_exec(sys.executable, "-c", "print('child ok')", stdout=asyncio.subprocess.PIPE)
+    out, _ = await proc.communicate()
+    return out.decode().strip()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Selector loops only lack subprocess support on Windows")
+def test_subprocesses_work_even_under_streamlits_selector_policy():
+    """Streamlit's server sets WindowsSelectorEventLoopPolicy; asyncio.run() then cannot spawn the MCP server."""
+    import asyncio
+
+    previous = asyncio.get_event_loop_policy()
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    try:
+        with pytest.raises(NotImplementedError):  # the failure being guarded against, reproduced in a thread
+            runner.concurrent.futures.ThreadPoolExecutor(1).submit(asyncio.run, _spawn_child()).result()
+        assert runner.run_in_fresh_loop(_spawn_child) == "child ok"  # the fix
+    finally:
+        asyncio.set_event_loop_policy(previous)
+
+
+def test_run_in_fresh_loop_returns_the_coroutine_result_and_propagates_errors():
+    async def ok():
+        return 42
+
+    async def boom():
+        raise ValueError("nope")
+
+    assert runner.run_in_fresh_loop(ok) == 42
+    with pytest.raises(ValueError, match="nope"):
+        runner.run_in_fresh_loop(boom)
+
+
+def test_every_run_uses_an_isolated_browser_profile_so_runs_can_overlap():
+    from tests_qa.mcp_client import MCPClient
+
+    args = MCPClient().server_args()
+    assert "--isolated" in args and "--headless" in args and not any(a.startswith("--timeout-action") for a in args)
+    assert "--headless" not in MCPClient(headless=False).server_args()
+    assert "--timeout-action=600000" in MCPClient(action_timeout_ms=600_000).server_args()
+
+
+# ---------- navigation allowlist: generated steps must not steer the browser anywhere else ----------
+
+from tests_qa.urls import is_allowed_navigation  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "url,allowed",
+    [
+        ("http://localhost:8501", True),
+        ("http://localhost:8501/", True),
+        ("http://127.0.0.1:8501/?x=1", True),  # loopback names are the same host
+        ("http://localhost:8501/some/page", True),
+        ("http://evil.example/", False),
+        ("https://localhost:8501", False),  # different scheme
+        ("http://localhost:9999", False),  # different port: another local service
+        ("http://localhost.evil.example:8501", False),
+        ("http://localhost:8501@evil.example/", False),  # userinfo trick: the real host is evil.example
+        ("file:///C:/Users/secrets.txt", False),
+        ("javascript:alert(1)", False),
+        ("about:blank", False),
+        ("", False),
+    ],
+)
+def test_navigation_is_limited_to_the_recharge_app(monkeypatch, url, allowed):
+    monkeypatch.delenv("RECHARGE_UI_URL", raising=False)
+    assert is_allowed_navigation(url) is allowed
+
+
+def test_the_allowed_origin_follows_the_configured_url(monkeypatch):
+    monkeypatch.setenv("RECHARGE_UI_URL", "http://127.0.0.1:9000")
+    assert is_allowed_navigation("http://localhost:9000") and not is_allowed_navigation("http://localhost:8501")
+
+
+def test_the_validator_rejects_a_generated_scenario_that_navigates_elsewhere():
+    scenario = {
+        "scenario_name": "injected",
+        "target_page": "recharge",
+        "steps": [{"action": "navigate", "target": "http://attacker.example/", "value": None}],
+        "assertion": {"target": ".a", "expected_contains": "b"},
+    }
+    assert is_valid_scenario(scenario) is False
+    scenario["steps"][0]["target"] = "http://localhost:8501"
+    assert is_valid_scenario(scenario) is True
+
+
+def test_the_runner_refuses_a_bad_navigation_even_if_validation_was_bypassed(monkeypatch):
+    monkeypatch.setattr(runner, "_preflight", lambda: None)  # even with both services up
+    result = runner.execute_scenario(
+        {
+            "scenario_name": "sneaky",
+            "steps": [{"action": "navigate", "target": "file:///C:/Windows/win.ini", "value": None}],
+            "assertion": {"target": ".a", "expected_contains": "b"},
+        }
+    )
+    assert result["status"] == "fail" and "not allowed" in result["detail"]

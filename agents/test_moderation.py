@@ -146,6 +146,39 @@ def test_llm_unmasked_pii_verdict_is_ignored(monkeypatch):
     assert out["moderated_answer"] == reply and out["safety_flag"] is None
 
 
+def test_a_browser_test_verdict_is_not_blocked_by_the_llm_classifier(monkeypatch):
+    """Regression: the classifier called 'Test ... FAILED. step 3 failed: selector not found' off-topic and hid it."""
+    monkeypatch.setattr(moderation, "get_llm", lambda: FakeLLM('{"safe": false, "category": "off_topic"}'))
+    verdict = "Test 'valid_recharge' FAILED. step 3 failed: selector not found: .st-key-continue_btn button"
+    out = moderation_node(
+        AgentState(query="q", raw_answer=verdict, route="testgen", test_result={"status": "fail", "detail": "x"})
+    )
+    assert out["moderated_answer"] == verdict and out["safety_flag"] is None
+
+
+def test_the_testgen_exemption_still_masks_phone_numbers(monkeypatch):
+    monkeypatch.setattr(moderation, "get_llm", lambda: pytest.fail("classifier must not run for a QA verdict"))
+    out = moderation_node(
+        AgentState(query="q", raw_answer="Test 'x' passed for 9876543210", route="testgen", test_result={"status": "pass"})
+    )
+    assert "9876543210" not in out["moderated_answer"] and "[MASKED_MSISDN]" in out["moderated_answer"]
+
+
+def test_every_testgen_reply_is_exempt_including_the_could_not_generate_message(monkeypatch):
+    """Regression (seen live): a prompt-injection request reached the test generator, which correctly declined with its
+    fixed message; the classifier then called that message off-topic and the agent saw a useless 'not able to share'."""
+    monkeypatch.setattr(moderation, "get_llm", lambda: FakeLLM('{"safe": false, "category": "off_topic"}'))
+    declined = "I couldn't turn that into a runnable test scenario. Try rephrasing it more concretely."
+    out = moderation_node(AgentState(query="q", raw_answer=declined, route="testgen"))
+    assert out["moderated_answer"] == declined and out["safety_flag"] is None
+
+
+def test_other_routes_are_still_classified(monkeypatch):
+    monkeypatch.setattr(moderation, "get_llm", lambda: FakeLLM('{"safe": false, "category": "off_topic"}'))
+    out = moderation_node(AgentState(query="q", raw_answer="something odd", route="rag"))
+    assert out["moderated_answer"] == BLOCKED_MESSAGE
+
+
 def test_empty_answer_skips_the_llm(monkeypatch):
     monkeypatch.setattr(moderation, "get_llm", lambda: pytest.fail("no LLM call for empty text"))
     assert moderation_node(AgentState(query="q", raw_answer=""))["moderated_answer"] == ""

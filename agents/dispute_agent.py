@@ -20,7 +20,8 @@ DISPUTE_PROMPT = """You are a billing dispute-resolution assistant. Using the di
 SOP context below and the subscriber's dispute record, write "explanation": a 2-3 sentence
 message addressed directly to the subscriber. Confirm that their dispute has been registered,
 say it will now be reviewed, and give the resolution timeline from the SOP. Do NOT promise a
-refund, and do NOT mention internal criteria, thresholds or escalation rules.
+refund, and do NOT mention internal criteria, thresholds or escalation rules. Amounts are in Indian rupees
+(₹); never use $.
 Respond as JSON only: {{"explanation": "..."}}
 
 SOP CONTEXT:

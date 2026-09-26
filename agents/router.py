@@ -47,7 +47,9 @@ def regex_route(query: str):
 def router_node(state: AgentState) -> dict:
     query = state["query"]
     match = MSISDN_PATTERN.search(query)
-    msisdn = match.group(1) if match else None
+    # A number typed in the query wins; otherwise keep the one the caller supplied (e.g. the customer currently
+    # open in the console), so "what's the balance?" works without repeating it.
+    msisdn = match.group(1) if match else state.get("msisdn")
 
     label = regex_route(query)
     if label:

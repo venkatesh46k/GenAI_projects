@@ -1,8 +1,10 @@
 import json
+import os
 
 from agents.llm import get_llm
 from agents.state import AgentState
 from agents.utils import parse_json
+from tests_qa.urls import is_allowed_navigation
 
 REQUIRED_KEYS = {"scenario_name", "target_page", "steps", "assertion"}
 VALID_ACTIONS = {"navigate", "fill", "click", "select", "wait_for", "read_text"}
@@ -86,6 +88,8 @@ def is_valid_scenario(scenario) -> bool:
             return False
         if not isinstance(step.get("target"), str) or not step["target"]:
             return False
+        if step["action"] == "navigate" and not is_allowed_navigation(step["target"]):
+            return False  # never let generated steps send the browser anywhere but the recharge app
         if step["action"] in {"fill", "select"} and not isinstance(step.get("value"), str):
             return False
     return isinstance(assertion, dict) and all(isinstance(assertion.get(k), str) and assertion[k] for k in ("target", "expected_contains"))
@@ -98,7 +102,16 @@ def generate_scenario(requirement: str):
     return scenario if is_valid_scenario(scenario) else None
 
 
+QA_DISABLED_MESSAGE = (
+    "Browser test runs are only available in the local setup (they need Node.js, Playwright and the recharge "
+    "app running), so they are switched off in this deployment."
+)
+
+
 def testgen_node(state: AgentState) -> dict:
+    if os.getenv("ENABLE_QA_RUNS", "1") == "0":
+        return {"raw_answer": QA_DISABLED_MESSAGE}
+
     scenario = generate_scenario(state["query"])
     if scenario is None:
         return {

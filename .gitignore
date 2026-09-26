@@ -5,7 +5,7 @@ __pycache__/
 data/billing.db
 logs/*.jsonl
 tests_qa/evidence/*.png
-.streamlit/
+.streamlit/secrets.toml
 *.egg-info/
 .venv-langflow/
 langflow/chroma_db_langflow/
