@@ -32,6 +32,7 @@ export const handlers = [
   http.get("/api/session", () => HttpResponse.json({ name: "Priya", role: "agent" })),
   http.post("/api/session", async ({ request }) => HttpResponse.json(await request.json())),
   http.delete("/api/session", () => new HttpResponse(null, { status: 204 })),
+  http.get("/api/health", () => HttpResponse.json({ status: "ok", assistant: { status: "ok", ready: true, provider: "test", model: "test" } })),
   http.get("/api/plans", () => HttpResponse.json(PLANS)),
   http.get("/api/customers", ({ request }) => {
     const url = new URL(request.url);

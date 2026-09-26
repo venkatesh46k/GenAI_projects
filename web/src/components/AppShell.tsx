@@ -1,12 +1,13 @@
-import { LogOut, Search, Users } from "lucide-react";
-import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { LogOut, Search, Sparkles, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useMatch } from "react-router-dom";
 import { useLogout, useSession } from "@/api/hooks";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/overlays";
 import { Avatar, Kbd } from "@/components/ui/primitives";
+import { CopilotDrawer } from "@/features/copilot/CopilotDrawer";
 import { cn } from "@/lib/utils";
 
 const ROLE_LABEL = { agent: "Agent", team_lead: "Team lead" } as const;
@@ -46,6 +47,20 @@ export function AppShell() {
   const { data: user } = useSession();
   const logout = useLogout();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const customer = useMatch("/customers/:msisdn")?.params.msisdn;
+
+  // Ctrl/Cmd+J opens and closes the Copilot, the way Ctrl/Cmd+K does the palette.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        setCopilotOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div className="flex min-h-screen">
@@ -89,6 +104,9 @@ export function AppShell() {
             <Kbd>{isMac ? "⌘" : "Ctrl"} K</Kbd>
           </button>
           <div className="ml-auto flex items-center gap-1">
+            <Button variant="primary" size="sm" onClick={() => setCopilotOpen(true)} data-testid="copilot-open">
+              <Sparkles /> Copilot
+            </Button>
             <ThemeToggle />
           </div>
         </header>
@@ -99,6 +117,7 @@ export function AppShell() {
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <CopilotDrawer open={copilotOpen} onOpenChange={setCopilotOpen} msisdn={customer && /^\d{10}$/.test(customer) ? customer : undefined} />
     </div>
   );
 }
