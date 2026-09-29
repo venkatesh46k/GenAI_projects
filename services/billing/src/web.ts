@@ -9,7 +9,17 @@ import type { FastifyInstance, FastifyRequest, FastifyServerOptions } from "fast
 import { createServer, parse } from "./app.js";
 import { chatRoutes, type AiConfig } from "./chat.js";
 import { HttpError } from "./errors.js";
-import { CustomerRechargeBody, CustomersQuery, LoginBody, type CustomerOverview, type SessionUser } from "./schemas.js";
+import {
+  AddNoteBody,
+  AddTagBody,
+  CustomerRechargeBody,
+  CustomersQuery,
+  DisputesQuery,
+  LoginBody,
+  ResolveDisputeBody,
+  type CustomerOverview,
+  type SessionUser,
+} from "./schemas.js";
 import { COOKIE_NAME, DEFAULT_TTL_SECONDS, decodeSession, encodeSession } from "./session.js";
 import * as billing from "./service.js";
 
@@ -79,6 +89,12 @@ export function buildWebApp(db: DatabaseSync, options: FastifyServerOptions = {}
   void app.register(cookie, { secret: config.sessionSecret });
   void app.register(rateLimit, { global: false });
 
+  /** The login page tells agents "Handles customer queries" and team leads "Reviews and escalates": this is where
+   * that split is actually enforced. Escalating and resolving a dispute are team-lead-only judgment calls. */
+  function requireTeamLead(req: FastifyRequest): void {
+    if (req.user?.role !== "team_lead") throw new HttpError(403, "Only a team lead can do this.");
+  }
+
   function currentUser(req: FastifyRequest): SessionUser | null {
     const raw = req.cookies[COOKIE_NAME];
     if (!raw) return null;
@@ -138,7 +154,7 @@ export function buildWebApp(db: DatabaseSync, options: FastifyServerOptions = {}
 
     api.get("/api/customers", async (req) => {
       const query = parse(CustomersQuery, req.query, "query");
-      return billing.listSubscribers(db, query);
+      return billing.listCustomersWithTags(db, query);
     });
 
     api.get<{ Params: { msisdn: string } }>("/api/customers/:msisdn/overview", async (req): Promise<CustomerOverview> =>
@@ -155,11 +171,51 @@ export function buildWebApp(db: DatabaseSync, options: FastifyServerOptions = {}
 
     api.get("/api/plans", async () => billing.listPlans(db));
 
+    // ------------------------------------------------------------------ tags
+
+    api.get("/api/tags", async () => billing.listAllTags(db));
+
+    api.post<{ Params: { msisdn: string } }>("/api/customers/:msisdn/tags", async (req) => {
+      const { tag } = parse(AddTagBody, req.body, "body");
+      return { tags: billing.addTag(db, req.params.msisdn, tag) };
+    });
+
+    api.delete<{ Params: { msisdn: string; tag: string } }>("/api/customers/:msisdn/tags/:tag", async (req) => {
+      return { tags: billing.removeTag(db, req.params.msisdn, decodeURIComponent(req.params.tag)) };
+    });
+
+    // ------------------------------------------------------------------ notes
+
+    api.post<{ Params: { msisdn: string } }>("/api/customers/:msisdn/notes", async (req) => {
+      const { text } = parse(AddNoteBody, req.body, "body");
+      return billing.addNote(db, { msisdn: req.params.msisdn, author_name: req.user!.name, author_role: req.user!.role, text });
+    });
+
+    // ------------------------------------------------------------------ disputes (workspace + resolution)
+
+    api.get("/api/disputes", async (req) => {
+      const { msisdn, status, limit } = parse(DisputesQuery, req.query, "query");
+      return billing.listDisputes(db, { msisdn, status, limit });
+    });
+
     api.post<{ Params: { dispute_id: string } }>("/api/disputes/:dispute_id/escalate", async (req) => {
+      requireTeamLead(req);
       const result = billing.escalateDispute(db, req.params.dispute_id);
       req.log.info({ user: req.user?.name, dispute: result.dispute_id, ticket: result.ticket_id }, "dispute escalated");
       return result;
     });
+
+    api.post<{ Params: { dispute_id: string } }>("/api/disputes/:dispute_id/resolve", async (req) => {
+      requireTeamLead(req);
+      const { outcome } = parse(ResolveDisputeBody, req.body, "body");
+      const result = billing.resolveDispute(db, req.params.dispute_id, outcome);
+      req.log.info({ user: req.user?.name, dispute: result.dispute_id, outcome }, "dispute resolved");
+      return result;
+    });
+
+    // ------------------------------------------------------------------ dashboard
+
+    api.get("/api/dashboard", async () => billing.dashboardStats(db));
   });
 
   void app.register(chatRoutes(config.ai));

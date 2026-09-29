@@ -50,6 +50,22 @@ CREATE TABLE IF NOT EXISTS transactions (
     balance_after REAL,
     timestamp TEXT
 );
+CREATE TABLE IF NOT EXISTS customer_tags (
+    msisdn TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (msisdn, tag),
+    FOREIGN KEY (msisdn) REFERENCES subscribers(msisdn)
+);
+CREATE TABLE IF NOT EXISTS notes (
+    note_id TEXT PRIMARY KEY,
+    msisdn TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    author_role TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (msisdn) REFERENCES subscribers(msisdn)
+);
 `;
 
 export function openDb(file: string = process.env.BILLING_DB_PATH ?? DEFAULT_DB_PATH): DatabaseSync {

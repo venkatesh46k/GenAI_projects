@@ -33,7 +33,7 @@ export function LoginPage() {
   const [role, setRole] = useState<Role>("agent");
   const [touched, setTouched] = useState(false);
 
-  const from = (location.state as { from?: string } | null)?.from ?? "/customers";
+  const from = (location.state as { from?: string } | null)?.from ?? "/dashboard";
   if (session.data) return <Navigate to={from} replace />;
 
   const nameError = touched ? validateName(name) : null;

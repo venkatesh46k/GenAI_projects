@@ -5,6 +5,8 @@ import { Skeleton } from "@/components/ui/primitives";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { CustomerPage } from "@/features/customers/CustomerPage";
 import { CustomersPage } from "@/features/customers/CustomersPage";
+import { DashboardPage } from "@/features/dashboard/DashboardPage";
+import { DisputeWorkspacePage } from "@/features/disputes/DisputeWorkspacePage";
 import { NotFoundPage } from "@/features/NotFoundPage";
 
 /** Everything except /login needs a session; a signed-out visitor is sent to sign in and brought back afterwards. */
@@ -28,9 +30,11 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
-          <Route index element={<Navigate to="/customers" replace />} />
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="customers/:msisdn" element={<CustomerPage />} />
+          <Route path="disputes" element={<DisputeWorkspacePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>

@@ -37,6 +37,7 @@ export const CustomerRechargeBody = z.strictObject({
 export const CustomersQuery = z.object({
   q: z.string().max(20).optional(),
   status: z.enum(["active", "barred", "expired"]).optional(),
+  tag: z.string().max(24).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
 
@@ -45,7 +46,20 @@ const limit = (fallback: number) => z.coerce.number().int().min(1).max(500).defa
 export const CdrQuery = z.object({ limit: limit(10) });
 export const TransactionsQuery = z.object({ limit: limit(20) });
 export const SubscribersQuery = z.object({ limit: limit(100) });
-export const DisputesQuery = z.object({ msisdn: z.string().min(1).optional(), limit: limit(50) });
+export const DISPUTE_STATUSES = ["open", "escalated", "resolved", "rejected"] as const;
+export const DisputesQuery = z.object({
+  msisdn: z.string().min(1).optional(),
+  status: z.enum(DISPUTE_STATUSES).optional(),
+  limit: limit(50),
+});
+
+export const TAG_PATTERN = /^[\p{L}\p{N} .'-]{1,24}$/u;
+export const AddTagBody = z.strictObject({ tag: z.string().trim().regex(TAG_PATTERN, "Use up to 24 letters, digits, spaces, dots, apostrophes and hyphens") });
+
+export const AddNoteBody = z.strictObject({ text: z.string().trim().min(1).max(2000) });
+
+export const RESOLUTION_OUTCOMES = ["resolved", "rejected"] as const;
+export const ResolveDisputeBody = z.strictObject({ outcome: z.enum(RESOLUTION_OUTCOMES) });
 
 // ---- response shapes (the API contract; mirrors mock_api/models.py) ----
 
@@ -120,12 +134,40 @@ export interface DisputeSummary extends DisputeDetail {
   created_at: string;
 }
 
+export interface NoteItem {
+  note_id: string;
+  msisdn: string;
+  author_name: string;
+  author_role: Role;
+  text: string;
+  created_at: string;
+}
+
+/** A customer row for the list screen: SubscriberItem plus the tags an agent has put on it. */
+export interface CustomerListItem extends SubscriberItem {
+  tags: string[];
+}
+
 export interface CustomerOverview {
   subscriber: SubscriberItem;
   plan: PlanResponse | null;
   usage: CdrItem[];
   transactions: TransactionItem[];
   disputes: DisputeSummary[];
+  notes: NoteItem[];
+  tags: string[];
+}
+
+export interface DashboardStats {
+  customer_count: number;
+  barred_count: number;
+  total_balance: number;
+  today_recharge_count: number;
+  today_recharge_amount: number;
+  open_disputes: number;
+  escalated_disputes: number;
+  /** Oldest first, the 7 most recent calendar days including today. */
+  revenue_last_7_days: Array<{ date: string; amount: number }>;
 }
 
 export interface SessionUser {

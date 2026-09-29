@@ -165,9 +165,10 @@ describe("customer page", () => {
     expect(await screen.findByText(/No customer with number 1111111111/)).toBeInTheDocument();
   });
 
-  it("escalates an open dispute after confirmation", async () => {
+  it("escalates an open dispute after confirmation, as a team lead", async () => {
     let escalated = "";
     server.use(
+      http.get("/api/session", () => HttpResponse.json({ name: "Priya", role: "team_lead" })),
       http.post("/api/disputes/:id/escalate", ({ params }) => {
         escalated = String(params.id);
         return HttpResponse.json({ dispute_id: escalated, status: "escalated", ticket_id: "TKT-9" });
@@ -182,6 +183,25 @@ describe("customer page", () => {
     await user.click(await screen.findByTestId("escalate-confirm"));
     await waitFor(() => expect(escalated).toBe("DSP-1"));
     expect(await screen.findByText(/TKT-9/)).toBeInTheDocument();
+  });
+
+  it("an agent sees Escalate but it does nothing: only a team lead may use it", async () => {
+    let calls = 0;
+    server.use(
+      http.post("/api/disputes/:id/escalate", () => {
+        calls++;
+        return HttpResponse.json({ dispute_id: "DSP-1", status: "escalated", ticket_id: "TKT-9" });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/customers/9876543210"); // default session in test/server.ts is role: "agent"
+    await screen.findByTestId("customer-number");
+    await user.click(screen.getByTestId("tab-disputes"));
+    const button = await screen.findByTestId("escalate-DSP-1");
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    await user.click(button);
+    expect(screen.queryByTestId("escalate-dialog")).not.toBeInTheDocument();
+    expect(calls).toBe(0);
   });
 });
 

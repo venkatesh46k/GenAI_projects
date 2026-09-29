@@ -107,8 +107,10 @@ export function buildApp(db: DatabaseSync, options: FastifyServerOptions = {}): 
   app.post("/dispute", async (req): Promise<DisputeResponse> => billing.createDispute(db, parse(DisputeBody, req.body, "body")));
 
   app.get("/disputes", async (req): Promise<DisputeSummary[]> => {
+    // Only msisdn/limit are part of the contract this internal API is tested against; a status filter is
+    // console-only and lives on the public /api/disputes route instead.
     const { msisdn, limit } = parse(DisputesQuery, req.query, "query");
-    return billing.listDisputes(db, msisdn, limit);
+    return billing.listDisputes(db, { msisdn, limit });
   });
 
   app.get<{ Params: { dispute_id: string } }>("/dispute/:dispute_id", async (req): Promise<DisputeDetail> => billing.getDispute(db, req.params.dispute_id));

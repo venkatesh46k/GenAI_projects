@@ -1,18 +1,22 @@
 import type { CustomerOverview, DisputeSummary } from "@contract/schemas";
 import { ArrowLeft, Ban, MessageSquare, Phone, TriangleAlert, Wallet, Wifi } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useEscalate, useOverview } from "@/api/hooks";
+import { useEscalate, useOverview, useResolveDispute, useSession } from "@/api/hooks";
 import { EmptyState, ErrorState } from "@/components/states";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/overlays";
+import { RoleGatedButton } from "@/components/RoleGatedButton";
 import { Badge, Card, CardContent, CardHeader, CardTitle, Skeleton, Table, TableCell, TableHead, TableRow } from "@/components/ui/primitives";
 import { ApiError } from "@/lib/api";
 import { LOW_BALANCE, LOW_BALANCE_WARNING, formatUsage, formatWhen, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { recordRecentlyViewed } from "@/lib/recentlyViewed";
+import { ActivityTab } from "./ActivityTab";
 import { RechargeDialog } from "./RechargeDialog";
+import { TagsRow } from "./TagsRow";
 
 const DISPUTE_TONE = { open: "info", escalated: "warning", resolved: "success", rejected: "danger" } as const;
 const CALL_ICON = { voice: Phone, sms: MessageSquare, data: Wifi } as const;
@@ -62,8 +66,10 @@ function BackLink() {
 }
 
 function CustomerView({ data }: { data: CustomerOverview }) {
-  const { subscriber, plan, usage, transactions, disputes } = data;
+  const { subscriber, plan, usage, transactions, disputes, notes, tags } = data;
   const [rechargeOpen, setRechargeOpen] = useState(false);
+  const isTeamLead = useSession().data?.role === "team_lead";
+  useEffect(() => recordRecentlyViewed(subscriber.msisdn), [subscriber.msisdn]);
   const barred = subscriber.status === "barred";
   // Three tiers from the low-balance policy: barred and below-₹5 both bar out-of-bundle usage (the same message
   // covers both, since a barred number is also below ₹5); ₹5 to below ₹10 only sends a warning SMS.
@@ -89,6 +95,9 @@ function CustomerView({ data }: { data: CustomerOverview }) {
             <p className="mt-0.5 text-sm text-muted-foreground">
               Prepaid subscriber · last recharge {formatWhen(subscriber.last_recharge_date)}
             </p>
+            <div className="mt-2">
+              <TagsRow msisdn={subscriber.msisdn} tags={tags} />
+            </div>
           </div>
         </div>
         <Button variant="primary" onClick={() => setRechargeOpen(true)} data-testid="open-recharge">
@@ -134,6 +143,9 @@ function CustomerView({ data }: { data: CustomerOverview }) {
             </TabsTrigger>
             <TabsTrigger value="disputes" data-testid="tab-disputes">
               Disputes <Count n={disputes.length} />
+            </TabsTrigger>
+            <TabsTrigger value="activity" data-testid="tab-activity">
+              Activity <Count n={notes.length} />
             </TabsTrigger>
           </TabsList>
 
@@ -204,8 +216,12 @@ function CustomerView({ data }: { data: CustomerOverview }) {
             {disputes.length === 0 ? (
               <EmptyState title="No disputes for this customer" />
             ) : (
-              <DisputesTable msisdn={subscriber.msisdn} disputes={disputes} />
+              <DisputesTable msisdn={subscriber.msisdn} disputes={disputes} canAct={isTeamLead} />
             )}
+          </TabsContent>
+
+          <TabsContent value="activity">
+            <ActivityTab msisdn={subscriber.msisdn} usage={usage} transactions={transactions} disputes={disputes} notes={notes} />
           </TabsContent>
         </Tabs>
       </Card>
@@ -215,11 +231,15 @@ function CustomerView({ data }: { data: CustomerOverview }) {
   );
 }
 
-function DisputesTable({ msisdn, disputes }: { msisdn: string; disputes: DisputeSummary[] }) {
+/** `canAct`: only a team lead may escalate or resolve/reject (the login page's own copy: "Reviews and escalates"). An
+ * agent still sees the table and the reason a button is disabled, rather than the action just being invisible. */
+function DisputesTable({ msisdn, disputes, canAct }: { msisdn: string; disputes: DisputeSummary[]; canAct: boolean }) {
   const escalate = useEscalate(msisdn);
+  const resolve = useResolveDispute();
   const [target, setTarget] = useState<DisputeSummary | null>(null);
+  const [resolving, setResolving] = useState<{ dispute: DisputeSummary; outcome: "resolved" | "rejected" } | null>(null);
 
-  function confirm() {
+  function confirmEscalate() {
     if (!target) return;
     escalate.mutate(target.dispute_id, {
       onSuccess: (result) => {
@@ -228,6 +248,20 @@ function DisputesTable({ msisdn, disputes }: { msisdn: string; disputes: Dispute
       },
       onError: (error) => toast.error("Could not escalate", { description: error.message }),
     });
+  }
+
+  function confirmResolve() {
+    if (!resolving) return;
+    resolve.mutate(
+      { disputeId: resolving.dispute.dispute_id, outcome: resolving.outcome },
+      {
+        onSuccess: (result) => {
+          toast.success(`${result.dispute_id} marked ${result.status}`);
+          setResolving(null);
+        },
+        onError: (error) => toast.error("Could not update the dispute", { description: error.message }),
+      },
+    );
   }
 
   return (
@@ -260,11 +294,23 @@ function DisputesTable({ msisdn, disputes }: { msisdn: string; disputes: Dispute
                 {dispute.reason}
               </TableCell>
               <TableCell className="text-right">
-                {dispute.status === "open" && (
-                  <Button variant="secondary" size="sm" onClick={() => setTarget(dispute)} data-testid={`escalate-${dispute.dispute_id}`}>
-                    Escalate
-                  </Button>
-                )}
+                <div className="flex justify-end gap-1.5">
+                  {dispute.status === "open" && (
+                    <RoleGatedButton canAct={canAct} onClick={() => setTarget(dispute)} testId={`escalate-${dispute.dispute_id}`}>
+                      Escalate
+                    </RoleGatedButton>
+                  )}
+                  {dispute.status === "escalated" && (
+                    <>
+                      <RoleGatedButton canAct={canAct} onClick={() => setResolving({ dispute, outcome: "resolved" })} testId={`resolve-${dispute.dispute_id}`}>
+                        Resolve
+                      </RoleGatedButton>
+                      <RoleGatedButton canAct={canAct} variant="danger" onClick={() => setResolving({ dispute, outcome: "rejected" })} testId={`reject-${dispute.dispute_id}`}>
+                        Reject
+                      </RoleGatedButton>
+                    </>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           ))}
@@ -284,8 +330,31 @@ function DisputesTable({ msisdn, disputes }: { msisdn: string; disputes: Dispute
             <Button variant="secondary" onClick={() => setTarget(null)} disabled={escalate.isPending}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={confirm} disabled={escalate.isPending} data-testid="escalate-confirm">
+            <Button variant="primary" onClick={confirmEscalate} disabled={escalate.isPending} data-testid="escalate-confirm">
               {escalate.isPending ? "Escalating…" : "Escalate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resolving !== null} onOpenChange={(open) => !open && !resolve.isPending && setResolving(null)}>
+        <DialogContent
+          title={resolving?.outcome === "resolved" ? "Mark this dispute resolved?" : "Reject this dispute?"}
+          description={resolving ? `${resolving.dispute.dispute_id} · ${money(resolving.dispute.amount_disputed)}` : undefined}
+          data-testid="resolve-dialog"
+        >
+          <p className="px-5 py-4 text-sm text-muted-foreground">
+            {resolving?.outcome === "resolved"
+              ? "The customer's claim is upheld and the dispute is closed in their favour."
+              : "The dispute is closed without a credit to the customer."}{" "}
+            This cannot be undone from here.
+          </p>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setResolving(null)} disabled={resolve.isPending}>
+              Cancel
+            </Button>
+            <Button variant={resolving?.outcome === "rejected" ? "danger" : "primary"} onClick={confirmResolve} disabled={resolve.isPending} data-testid="resolve-confirm">
+              {resolve.isPending ? "Saving…" : resolving?.outcome === "resolved" ? "Mark resolved" : "Reject"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -293,6 +362,7 @@ function DisputesTable({ msisdn, disputes }: { msisdn: string; disputes: Dispute
     </>
   );
 }
+
 
 function Kpi({ label, value, hint, tone, testId }: { label: string; value: string; hint?: string; tone?: "danger" | "warning"; testId?: string }) {
   return (

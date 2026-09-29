@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import type { CustomerOverview, PlanResponse, SubscriberItem } from "@contract/schemas";
+import type { CustomerOverview, DashboardStats, DisputeSummary, NoteItem, PlanResponse, SubscriberItem } from "@contract/schemas";
 
 export const SUBSCRIBERS: SubscriberItem[] = [
   { msisdn: "9876543210", plan_id: "P199", balance: 120.5, status: "active", last_recharge_date: "2026-09-01T10:00:00Z" },
@@ -14,6 +14,34 @@ export const PLANS: PlanResponse[] = [
   { plan_id: "P199", name: "Plus", price: 199, validity_days: 28, data_per_day_gb: 1.5, voice_minutes: 300, sms_per_day: 100 },
 ];
 
+const initialDisputes = (): DisputeSummary[] => [
+  { dispute_id: "DSP-1", msisdn: "9876543210", amount_disputed: 50, reason: "Charged twice", status: "open", created_at: "2026-09-11T09:00:00Z" },
+  { dispute_id: "DSP-2", msisdn: "9876500002", amount_disputed: 20, reason: "Wrong plan applied", status: "escalated", created_at: "2026-09-12T09:00:00Z" },
+  { dispute_id: "DSP-3", msisdn: "9876500003", amount_disputed: 10, reason: "Data not credited", status: "resolved", created_at: "2026-09-09T09:00:00Z" },
+];
+
+const DASHBOARD: DashboardStats = {
+  customer_count: SUBSCRIBERS.length,
+  barred_count: 1,
+  total_balance: 129.5,
+  today_recharge_count: 2,
+  today_recharge_amount: 298,
+  open_disputes: 1,
+  escalated_disputes: 1,
+  revenue_last_7_days: Array.from({ length: 7 }, (_, i) => ({ date: `2026-09-2${i}`, amount: i * 25 })),
+};
+
+/** Mutable fixture state (tags, notes, disputes). `resetFixtures()` restores all three between tests. */
+export let TAGS: Record<string, string[]> = {};
+export let NOTES: Record<string, NoteItem[]> = {};
+export let DISPUTES: DisputeSummary[] = initialDisputes();
+
+export function resetFixtures() {
+  TAGS = {};
+  NOTES = {};
+  DISPUTES = initialDisputes();
+}
+
 export function overviewFor(msisdn: string): CustomerOverview | null {
   const subscriber = SUBSCRIBERS.find((s) => s.msisdn === msisdn);
   if (!subscriber) return null;
@@ -22,9 +50,9 @@ export function overviewFor(msisdn: string): CustomerOverview | null {
     plan: PLANS.find((p) => p.plan_id === subscriber.plan_id) ?? null,
     usage: [{ cdr_id: "C1", call_type: "voice", duration_sec: 125, data_mb: null, charge: 1.5, timestamp: "2026-09-10T09:00:00Z" }],
     transactions: [{ txn_id: "TXN1", type: "recharge", amount: 199, balance_after: 199, timestamp: "2026-09-01T10:00:00Z" }],
-    disputes: [
-      { dispute_id: "DSP-1", msisdn, amount_disputed: 50, reason: "Charged twice", status: "open", created_at: "2026-09-11T09:00:00Z" },
-    ] as CustomerOverview["disputes"],
+    disputes: DISPUTES.filter((d) => d.msisdn === msisdn),
+    notes: NOTES[msisdn] ?? [],
+    tags: TAGS[msisdn] ?? [],
   };
 }
 
@@ -39,12 +67,58 @@ export const handlers = [
     const url = new URL(request.url);
     const q = url.searchParams.get("q") ?? "";
     const status = url.searchParams.get("status") ?? "";
-    return HttpResponse.json(SUBSCRIBERS.filter((s) => s.msisdn.includes(q) && (!status || s.status === status)));
+    const tag = url.searchParams.get("tag") ?? "";
+    return HttpResponse.json(
+      SUBSCRIBERS.filter((s) => s.msisdn.includes(q) && (!status || s.status === status) && (!tag || (TAGS[s.msisdn] ?? []).includes(tag))).map((s) => ({
+        ...s,
+        tags: TAGS[s.msisdn] ?? [],
+      })),
+    );
   }),
   http.get("/api/customers/:msisdn/overview", ({ params }) => {
     const data = overviewFor(String(params.msisdn));
     return data ? HttpResponse.json(data) : HttpResponse.json({ detail: "Subscriber not found" }, { status: 404 });
   }),
+  http.get("/api/tags", () => HttpResponse.json([...new Set(Object.values(TAGS).flat())].sort())),
+  http.post("/api/customers/:msisdn/tags", async ({ params, request }) => {
+    const msisdn = String(params.msisdn);
+    const { tag } = (await request.json()) as { tag: string };
+    const current = TAGS[msisdn] ?? [];
+    TAGS[msisdn] = current.includes(tag) ? current : [...current, tag];
+    return HttpResponse.json({ tags: TAGS[msisdn] });
+  }),
+  http.delete("/api/customers/:msisdn/tags/:tag", ({ params }) => {
+    const msisdn = String(params.msisdn);
+    TAGS[msisdn] = (TAGS[msisdn] ?? []).filter((t) => t !== decodeURIComponent(String(params.tag)));
+    return HttpResponse.json({ tags: TAGS[msisdn] });
+  }),
+  http.post("/api/customers/:msisdn/notes", async ({ params, request }) => {
+    const msisdn = String(params.msisdn);
+    const { text } = (await request.json()) as { text: string };
+    const note: NoteItem = { note_id: `N-${(NOTES[msisdn]?.length ?? 0) + 1}`, msisdn, author_name: "Priya", author_role: "agent", text, created_at: new Date().toISOString() };
+    NOTES[msisdn] = [note, ...(NOTES[msisdn] ?? [])];
+    return HttpResponse.json(note);
+  }),
+  http.get("/api/disputes", ({ request }) => {
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status");
+    const msisdn = url.searchParams.get("msisdn");
+    return HttpResponse.json(DISPUTES.filter((d) => (!status || d.status === status) && (!msisdn || d.msisdn === msisdn)));
+  }),
+  http.post("/api/disputes/:id/escalate", ({ params }) => {
+    const dispute = DISPUTES.find((d) => d.dispute_id === params.id);
+    if (!dispute) return HttpResponse.json({ detail: "Dispute not found" }, { status: 404 });
+    dispute.status = "escalated";
+    return HttpResponse.json({ dispute_id: dispute.dispute_id, status: "escalated", ticket_id: "TCK-abc123" });
+  }),
+  http.post("/api/disputes/:id/resolve", async ({ params, request }) => {
+    const dispute = DISPUTES.find((d) => d.dispute_id === params.id);
+    if (!dispute) return HttpResponse.json({ detail: "Dispute not found" }, { status: 404 });
+    const { outcome } = (await request.json()) as { outcome: "resolved" | "rejected" };
+    dispute.status = outcome;
+    return HttpResponse.json({ dispute_id: dispute.dispute_id, status: outcome, reason: dispute.reason, amount_disputed: dispute.amount_disputed });
+  }),
+  http.get("/api/dashboard", () => HttpResponse.json(DASHBOARD)),
 ];
 
 export const server = setupServer(...handlers);

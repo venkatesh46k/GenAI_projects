@@ -1,11 +1,13 @@
-import { Search, X } from "lucide-react";
+import { Download, Search, Tag as TagIcon, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useCustomers } from "@/api/hooks";
+import { useAllTags, useCustomers } from "@/api/hooks";
 import { EmptyState, ErrorState } from "@/components/states";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, Input, Skeleton, Table, TableCell, TableHead, TableRow } from "@/components/ui/primitives";
+import { Select } from "@/components/ui/select";
+import { downloadCsv } from "@/lib/csv";
 import { LOW_BALANCE, LOW_BALANCE_WARNING, formatWhen, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -30,9 +32,11 @@ export function CustomersPage() {
   const [params, setParams] = useSearchParams();
   const urlQuery = params.get("q") ?? "";
   const status = params.get("status") ?? "";
+  const tag = params.get("tag") ?? "";
   const [text, setText] = useState(urlQuery);
   const debounced = useDebounced(text.trim(), 250);
   const navigate = useNavigate();
+  const allTags = useAllTags();
 
   // Keep the address bar in step with the filters, so a search can be shared and Back works.
   useEffect(() => {
@@ -47,7 +51,7 @@ export function CustomersPage() {
     );
   }, [debounced, setParams]);
 
-  const customers = useCustomers(debounced, status);
+  const customers = useCustomers(debounced, status, tag);
   const rows = useMemo(() => customers.data ?? [], [customers.data]);
   const totals = useMemo(
     () => ({
@@ -67,17 +71,38 @@ export function CustomersPage() {
       return next;
     });
 
-  const filtered = Boolean(debounced || status);
+  const setTag = (value: string) =>
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (value) next.set("tag", value);
+      else next.delete("tag");
+      return next;
+    });
+
+  const filtered = Boolean(debounced || status || tag);
   const clearFilters = () => {
     setText("");
     setParams({}, { replace: true });
   };
 
+  function exportCsv() {
+    downloadCsv(
+      "customers",
+      ["Number", "Status", "Plan", "Balance", "Last recharge", "Tags"],
+      rows.map((c) => [c.msisdn, c.status, c.plan_id ?? "", c.balance.toFixed(2), c.last_recharge_date ?? "", c.tags.join("; ")]),
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Customers</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Look up a prepaid subscriber to see their balance, usage and disputes.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Customers</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Look up a prepaid subscriber to see their balance, usage and disputes.</p>
+        </div>
+        <Button variant="secondary" size="sm" onClick={exportCsv} disabled={rows.length === 0} data-testid="export-customers">
+          <Download /> Export CSV
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="customer-stats">
@@ -114,23 +139,36 @@ export function CustomersPage() {
             )}
           </div>
 
-          <div role="radiogroup" aria-label="Filter by status" className="inline-flex rounded-md border border-border bg-muted p-0.5">
-            {STATUSES.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={status === option.value}
-                data-testid={`status-filter-${option.value || "all"}`}
-                onClick={() => setStatus(option.value)}
-                className={cn(
-                  "rounded-[5px] px-3 py-1 text-sm font-medium transition-colors",
-                  status === option.value ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div role="radiogroup" aria-label="Filter by status" className="inline-flex rounded-md border border-border bg-muted p-0.5">
+              {STATUSES.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={status === option.value}
+                  data-testid={`status-filter-${option.value || "all"}`}
+                  onClick={() => setStatus(option.value)}
+                  className={cn(
+                    "rounded-[5px] px-3 py-1 text-sm font-medium transition-colors",
+                    status === option.value ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {(allTags.data?.length ?? 0) > 0 && (
+              <Select aria-label="Filter by tag" data-testid="tag-filter" className="h-8 w-36 text-xs" value={tag} onChange={(event) => setTag(event.target.value)}>
+                <option value="">All tags</option>
+                {allTags.data!.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </Select>
+            )}
           </div>
         </div>
 
@@ -182,6 +220,16 @@ export function CustomersPage() {
                     >
                       {customer.msisdn}
                     </Link>
+                    {customer.tags.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {customer.tags.map((t) => (
+                          <span key={t} className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                            <TagIcon className="size-2.5" aria-hidden />
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={customer.status} />

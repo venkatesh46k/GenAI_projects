@@ -109,6 +109,11 @@ describe("who may call what", () => {
     ["POST", `/api/customers/${MSISDN}/recharge`],
     ["GET", "/api/plans"],
     ["POST", "/api/disputes/D-100001/escalate"],
+    ["GET", "/api/disputes"],
+    ["GET", "/api/dashboard"],
+    ["GET", "/api/tags"],
+    ["POST", `/api/customers/${MSISDN}/notes`],
+    ["POST", `/api/customers/${MSISDN}/tags`],
     ["POST", "/api/chat"],
     ["POST", "/api/chat/stream"],
     ["GET", "/api/evidence/a.png"],
@@ -219,11 +224,13 @@ describe("customer screens", () => {
   it("returns everything the Customer 360 screen needs in one call", async () => {
     const { a, headers } = await authed();
     const overview = (await a.inject({ method: "GET", url: `/api/customers/${MSISDN}/overview`, headers })).json();
-    expect(Object.keys(overview).sort()).toEqual(["disputes", "plan", "subscriber", "transactions", "usage"]);
+    expect(Object.keys(overview).sort()).toEqual(["disputes", "notes", "plan", "subscriber", "tags", "transactions", "usage"]);
     expect(overview.subscriber).toMatchObject({ msisdn: MSISDN, balance: 45.5, status: "active" });
     expect(overview.plan).toMatchObject({ plan_id: "PLAN_199", name: "Basic 199" });
     expect(overview.usage).toHaveLength(10);
     expect(overview.disputes.map((d: { dispute_id: string }) => d.dispute_id)).toEqual(["D-100001"]);
+    expect(overview.notes).toEqual([]);
+    expect(overview.tags).toEqual([]);
   });
 
   it("404s for an unknown customer", async () => {
@@ -272,6 +279,135 @@ describe("customer screens", () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ dispute_id: "D-100001", status: "escalated" });
     expect((await a.inject({ method: "POST", url: "/api/disputes/D-nope/escalate", headers })).statusCode).toBe(404);
+  });
+});
+
+describe("tags", () => {
+  const authed = async (role: "agent" | "team_lead" = "agent") => {
+    const a = build();
+    return { a, headers: { cookie: await signIn(a, { name: "Priya", role }) } };
+  };
+
+  it("adds and removes a tag, and lists it back on the customer and the all-tags menu", async () => {
+    const { a, headers } = await authed();
+    const added = await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/tags`, headers, payload: { tag: "VIP" } });
+    expect(added.statusCode).toBe(200);
+    expect(added.json()).toEqual({ tags: ["VIP"] });
+
+    const overview = (await a.inject({ method: "GET", url: `/api/customers/${MSISDN}/overview`, headers })).json();
+    expect(overview.tags).toEqual(["VIP"]);
+    expect((await a.inject({ method: "GET", url: "/api/tags", headers })).json()).toEqual(["VIP"]);
+
+    const list = (await a.inject({ method: "GET", url: `/api/customers?tag=VIP`, headers })).json();
+    expect(list.map((c: { msisdn: string }) => c.msisdn)).toEqual([MSISDN]);
+
+    const removed = await a.inject({ method: "DELETE", url: `/api/customers/${MSISDN}/tags/${encodeURIComponent("VIP")}`, headers });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toEqual({ tags: [] });
+  });
+
+  it("adding the same tag twice is not an error and does not duplicate it", async () => {
+    const { a, headers } = await authed();
+    await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/tags`, headers, payload: { tag: "At risk" } });
+    const again = await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/tags`, headers, payload: { tag: "At risk" } });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toEqual({ tags: ["At risk"] });
+  });
+
+  it("404s a tag on an unknown customer and rejects an unreasonable tag", async () => {
+    const { a, headers } = await authed();
+    expect((await a.inject({ method: "POST", url: "/api/customers/0000000000/tags", headers, payload: { tag: "VIP" } })).statusCode).toBe(404);
+    for (const tag of ["", "x".repeat(25), "<script>"]) {
+      expect((await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/tags`, headers, payload: { tag } })).statusCode, tag).toBe(422);
+    }
+  });
+});
+
+describe("notes", () => {
+  const authed = async () => {
+    const a = build();
+    return { a, headers: { cookie: await signIn(a, { name: "Priya Sharma", role: "agent" }) } };
+  };
+
+  it("adds a note, attributed to whoever is signed in, and it shows up on the overview", async () => {
+    const { a, headers } = await authed();
+    const res = await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/notes`, headers, payload: { text: "Asked for a plan upgrade." } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ msisdn: MSISDN, author_name: "Priya Sharma", author_role: "agent", text: "Asked for a plan upgrade." });
+    expect(res.json().note_id).toMatch(/^N-[0-9a-f]{8}$/);
+
+    const overview = (await a.inject({ method: "GET", url: `/api/customers/${MSISDN}/overview`, headers })).json();
+    expect(overview.notes).toHaveLength(1);
+    expect(overview.notes[0].text).toBe("Asked for a plan upgrade.");
+  });
+
+  it("404s a note on an unknown customer and rejects an empty one", async () => {
+    const { a, headers } = await authed();
+    expect((await a.inject({ method: "POST", url: "/api/customers/0000000000/notes", headers, payload: { text: "x" } })).statusCode).toBe(404);
+    expect((await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/notes`, headers, payload: { text: "" } })).statusCode).toBe(422);
+    expect((await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/notes`, headers, payload: {} })).statusCode).toBe(422);
+  });
+});
+
+describe("dispute workspace and resolution", () => {
+  const authed = async (role: "agent" | "team_lead") => {
+    const a = build();
+    return { a, headers: { cookie: await signIn(a, { name: "Someone", role }) } };
+  };
+
+  it("lists disputes across every customer, filterable by status", async () => {
+    const { a, headers } = await authed("agent");
+    const all = (await a.inject({ method: "GET", url: "/api/disputes", headers })).json();
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    expect(all.every((d: { msisdn: string }) => d.msisdn)).toBe(true); // the workspace needs to know whose dispute it is
+
+    const open = (await a.inject({ method: "GET", url: "/api/disputes?status=open", headers })).json();
+    expect(open.every((d: { status: string }) => d.status === "open")).toBe(true);
+
+    const combined = (await a.inject({ method: "GET", url: `/api/disputes?status=open&msisdn=${MSISDN}`, headers })).json();
+    expect(combined.every((d: { msisdn: string; status: string }) => d.msisdn === MSISDN && d.status === "open")).toBe(true);
+  });
+
+  it("an agent can view but not escalate or resolve a dispute", async () => {
+    const { a, headers } = await authed("agent");
+    const escalate = await a.inject({ method: "POST", url: "/api/disputes/D-100001/escalate", headers });
+    expect(escalate.statusCode).toBe(403);
+    expect(escalate.json()).toEqual({ detail: "Only a team lead can do this." });
+    const resolve = await a.inject({ method: "POST", url: "/api/disputes/D-100001/resolve", headers, payload: { outcome: "resolved" } });
+    expect(resolve.statusCode).toBe(403);
+  });
+
+  it("a team lead resolves or rejects a dispute, and 404s an unknown one", async () => {
+    const { a, headers } = await authed("team_lead");
+    const resolved = await a.inject({ method: "POST", url: "/api/disputes/D-100001/resolve", headers, payload: { outcome: "resolved" } });
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json()).toMatchObject({ dispute_id: "D-100001", status: "resolved" });
+
+    const rejected = await a.inject({ method: "POST", url: "/api/disputes/D-100002/resolve", headers, payload: { outcome: "rejected" } });
+    expect(rejected.statusCode).toBe(200);
+    expect(rejected.json()).toMatchObject({ status: "rejected" });
+
+    expect((await a.inject({ method: "POST", url: "/api/disputes/D-nope/resolve", headers, payload: { outcome: "resolved" } })).statusCode).toBe(404);
+    expect((await a.inject({ method: "POST", url: "/api/disputes/D-100001/resolve", headers, payload: { outcome: "maybe" } })).statusCode).toBe(422);
+  });
+});
+
+describe("dashboard", () => {
+  it("reports cross-customer totals that move when a recharge happens", async () => {
+    const a = build();
+    const headers = { cookie: await signIn(a, { name: "Priya", role: "agent" }) };
+    const before = (await a.inject({ method: "GET", url: "/api/dashboard", headers })).json();
+    expect(before).toMatchObject({ customer_count: 3, barred_count: 1 });
+    expect(before.revenue_last_7_days).toHaveLength(7);
+    expect(before.open_disputes).toBeGreaterThanOrEqual(1);
+
+    await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/recharge`, headers, payload: { amount: 199 } });
+    const after = (await a.inject({ method: "GET", url: "/api/dashboard", headers })).json();
+    expect(after.today_recharge_count).toBe(before.today_recharge_count + 1);
+    expect(after.today_recharge_amount).toBeCloseTo(before.today_recharge_amount + 199, 5);
+    expect(after.total_balance).toBeCloseTo(before.total_balance + 199, 5);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(after.revenue_last_7_days.at(-1)).toMatchObject({ date: today });
   });
 });
 
