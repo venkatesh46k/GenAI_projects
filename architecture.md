@@ -17,7 +17,9 @@
 > agent). Of the prompt templates in section 10, the RAG, billing, dispute, escalation and moderation prompts
 > (10.3–10.6, 10.8) are close to what `agents/` still runs; the router (10.2) and Test-Gen (10.7) ones are not —
 > both were substantially rewritten since (the router to fix routing bugs, Test-Gen for the React console's
-> `data-testid` selectors and sign-in step) — read the real files for those two, not this section.
+> `data-testid` selectors and sign-in step) — read the real files for those two, not this section. One thing in
+> this document **is** still a live to-do: **Phase 10**, added at the end of section 4, is the one remaining
+> deployment step (a public Hugging Face Space), currently blocked on subscribing to Hugging Face PRO.
 
 ---
 
@@ -306,6 +308,37 @@ Keeping this explicit (rather than a loose dict) is itself a talking point — i
 **Effort:** 2 days
 
 **Total estimated effort:** ~18–21 working days, i.e. roughly 10–12 weekends part-time.
+
+### Phase 10 — Live Hugging Face Space (pending: needs HF PRO)
+Added after Phase 9 (the React/Node/FastAPI rebuild, see the status note at the top of this document), not part of
+the original 8-phase estimate above. Everything this phase needs is already built and verified locally — it is
+blocked on one thing: Hugging Face now requires a **PRO subscription** ($9/month) to create a Docker Space (the
+free tier only allows Static Spaces, which cannot run this app). Do this once that is in place.
+
+**Already done, nothing to build:**
+- `Dockerfile` (targets `web`, `ai`, and the default `app` combining both for a Space, port 7860), `docker-compose.yml`,
+  `deploy/start.sh` (the container entrypoint — generates `SESSION_SECRET`/`AI_SERVICE_TOKEN` if not set, seeds the
+  database, starts both services).
+- Verified: `docker compose up --build` builds and runs correctly (a real bug — a database directory owned by
+  `root` inside the `web` image — was found and fixed this way, not by inspection).
+
+**Tasks (once subscribed):**
+1. huggingface.co/pro → subscribe.
+2. New Space → SDK **Docker**, template **Blank**. Any name; CPU basic hardware is enough.
+3. `git remote add space https://huggingface.co/spaces/<user>/<space-name>`, then `git push space main`.
+4. Space Settings → Variables and secrets: `ACTIVE_PROVIDER` (`groq`/`openai`/`anthropic`/`cloudflare`) and that
+   provider's key. Rotate the key first if it is one that has ever been pasted into a chat session.
+5. Watch the **Logs** tab (first build downloads several GB; 10–20 minutes). Open the direct `*.hf.space` URL (not
+   the embedded view — the console refuses to be framed).
+6. Verify: sign in, ask the Copilot a policy question and a balance question, confirm `ENABLE_QA_RUNS=0` correctly
+   disables the browser-test route there (no Playwright in the image).
+
+**Acceptance criteria:** the exact one Phase 8 could not meet — a public URL that loads the console and answers a
+question correctly, without anything running locally.
+
+**After it's live:** move the `v1.0-rc1` git tag to a real `v1.0` (`git tag -a v1.0 -m "..."`), add the Space URL to
+the top of README.md, and update the "Not verified" / "Docker images and Space deployment are unverified" notes
+there (in "Deploy to Hugging Face Spaces" and "Honest limitations") to say it is live instead.
 
 ---
 
