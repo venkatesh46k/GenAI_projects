@@ -137,6 +137,53 @@ lists the built front-end files when it starts, so **restart after a front-end b
 To work on the front end with hot reload: `python scripts/dev.py` in one terminal, then `cd web; npm run dev`
 (http://localhost:5173, proxied to the Node server).
 
+## Working from more than one machine
+
+The repo is on GitHub at [venkatesh46k/GenAI_projects](https://github.com/venkatesh46k/GenAI_projects). A few things
+are git-ignored on purpose (keys, local data, installed packages, build output) and so need a small step on **every**
+machine, not just the first.
+
+**First time on a new machine:** set up the Python side first (`scripts/dev.py` needs its own packages just to
+start), then let it handle the rest.
+```powershell
+git clone https://github.com/venkatesh46k/GenAI_projects.git
+cd GenAI_projects
+python -m venv .venv; .venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env                 # then fill in ACTIVE_PROVIDER and its key — .env never travels with git
+python scripts/dev.py --build --reseed # runs `npm ci` for you if node_modules is missing in web/ or services/billing
+```
+
+**Pushing changes:**
+```powershell
+git status --short                      # check nothing you don't mean to commit is staged (see below)
+git add -A
+git commit -m "..."
+git push                                # add --tags too if you created or moved a tag
+```
+Before pushing: never commit `.env` (it's git-ignored, so this shouldn't happen by itself) and re-run
+`git grep -nE "sk-proj-|gsk_|cfut_"` if you ever paste a key into a file by hand. Two folders show as modified
+whenever the app has been running locally and should not be committed: `rag/chroma_db/` (SQLite's WAL side effects;
+revert with `git checkout -- rag/chroma_db/` if it's just noise) and `data/billing.db*` (already git-ignored).
+
+**Pulling changes:**
+```powershell
+git pull                                # add --tags if the other machine pushed new ones
+```
+After pulling, redo whichever of these actually changed (`git log --stat` shows you which):
+- **`requirements.txt`** → `pip install -r requirements.txt`
+- **`services/billing/package.json` or `web/package.json`** → `npm ci` in that folder
+- **`services/billing/src/db.ts` (the `SCHEMA` constant) or `services/billing/src/seed.ts`** → your local
+  `data/billing.db` won't have new tables/columns until you reseed: `python scripts/dev.py --reseed`
+- **anything under `web/`** → rebuild and restart: `python scripts/dev.py --build` (the Node server lists the built
+  files once at startup, so a rebuild alone isn't enough — restart it)
+- **`ai_service/schemas.py`** → the generated TypeScript types can go stale; regenerate with
+  `npm run gen:ai-types` in `services/billing` (a test fails loudly if you forget)
+
+**Never travels with git, so it's set up per machine:** `.env`, `data/billing.db*`, `.venv/`, `node_modules/` (both
+folders), `dist/` (both), `logs/`. `rag/chroma_db/` (the pre-built RAG index) is the exception — it *is* committed,
+so you don't need to rebuild it anywhere.
+
 ## Run it in Docker
 
 ```bash
