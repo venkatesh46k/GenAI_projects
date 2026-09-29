@@ -35,6 +35,9 @@ COPY --from=node-build --chown=1000:1000 /app/services/billing/node_modules serv
 COPY --from=node-build --chown=1000:1000 /app/services/billing/package.json services/billing/package.json
 COPY --from=web-build --chown=1000:1000 /src/web/dist web/dist
 COPY --chown=1000:1000 deploy/start.sh deploy/start.sh
+# /data is where compose mounts the persistent database volume; a named volume is created owned by root, but this
+# container runs as the unprivileged "node" user, so the directory needs to already be node's before that happens.
+RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 7860
 CMD ["bash", "deploy/start.sh", "web"]

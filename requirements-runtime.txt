@@ -1,5 +1,5 @@
 # What the AI service needs to run (the Docker image installs this). requirements.txt adds the dev tools:
-# DeepEval (the eval suite), pytest, the MCP client (browser QA agent) and Streamlit (legacy).
+# DeepEval (the eval suite), pytest, the MCP client (browser QA agent), and Pillow (docs/make_gif.py).
 langchain
 langchain-community
 langchain-text-splitters
