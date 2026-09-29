@@ -6,7 +6,7 @@ import { EmptyState, ErrorState } from "@/components/states";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, Input, Skeleton, Table, TableCell, TableHead, TableRow } from "@/components/ui/primitives";
-import { formatWhen, money } from "@/lib/format";
+import { LOW_BALANCE, LOW_BALANCE_WARNING, formatWhen, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const STATUSES = [
@@ -187,7 +187,15 @@ export function CustomersPage() {
                     <StatusBadge status={customer.status} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{customer.plan_id ?? "No plan"}</TableCell>
-                  <TableCell className={cn("tabular text-right font-medium", customer.balance < 5 && "text-danger")}>{money(customer.balance)}</TableCell>
+                  <TableCell
+                    className={cn(
+                      "tabular text-right font-medium",
+                      customer.status !== "barred" && customer.balance < LOW_BALANCE && "text-danger",
+                      customer.status !== "barred" && customer.balance >= LOW_BALANCE && customer.balance < LOW_BALANCE_WARNING && "text-warning",
+                    )}
+                  >
+                    {money(customer.balance)}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{formatWhen(customer.last_recharge_date)}</TableCell>
                 </TableRow>
               ))}

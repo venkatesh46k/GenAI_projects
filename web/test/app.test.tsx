@@ -93,6 +93,16 @@ describe("auth guard and login", () => {
 });
 
 describe("customers list", () => {
+  it("colors the balance by how low it is, but not for a barred number (its own badge already says so)", async () => {
+    renderApp("/customers");
+    const cell = (msisdn: string) => within(screen.getByTestId(`customer-row-${msisdn}`)).getByText(/^₹/);
+    expect(await screen.findByTestId("customer-row-9876543210")).toBeInTheDocument();
+    expect(cell("9876543210")).not.toHaveClass("text-danger", "text-warning"); // ₹120.50: well clear
+    expect(cell("9876500002")).toHaveClass("text-danger"); // ₹2: below ₹5
+    expect(cell("9876500003")).not.toHaveClass("text-danger", "text-warning"); // barred: the status badge covers it
+    expect(cell("9876500004")).toHaveClass("text-warning"); // ₹7: the ₹5-10 warning band
+  });
+
   it("lists customers and filters by status", async () => {
     const user = userEvent.setup();
     renderApp("/customers");
@@ -143,8 +153,11 @@ describe("customer page", () => {
     const { unmount } = renderApp("/customers/9876500002");
     expect(await screen.findByTestId("balance-alert")).toHaveTextContent(/below/i);
     unmount();
-    renderApp("/customers/9876500003");
+    const barred = renderApp("/customers/9876500003");
     expect(await screen.findByTestId("balance-alert")).toHaveTextContent(/barred/i);
+    barred.unmount();
+    renderApp("/customers/9876500004");
+    expect(await screen.findByTestId("balance-alert")).toHaveTextContent(/low balance warning/i);
   });
 
   it("explains an unknown number", async () => {

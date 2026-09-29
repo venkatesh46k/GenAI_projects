@@ -35,3 +35,6 @@ export function statusLabel(status: string): string {
 
 /** Barring threshold from the low-balance policy: below this, out-of-bundle usage is barred. */
 export const LOW_BALANCE = 5;
+
+/** From the same policy: below this (and at or above LOW_BALANCE), an SMS warning is sent but nothing is restricted. */
+export const LOW_BALANCE_WARNING = 10;

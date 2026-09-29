@@ -6,6 +6,7 @@ export const SUBSCRIBERS: SubscriberItem[] = [
   { msisdn: "9876543210", plan_id: "P199", balance: 120.5, status: "active", last_recharge_date: "2026-09-01T10:00:00Z" },
   { msisdn: "9876500002", plan_id: "P99", balance: 2, status: "active", last_recharge_date: null },
   { msisdn: "9876500003", plan_id: null, balance: 0, status: "barred", last_recharge_date: null },
+  { msisdn: "9876500004", plan_id: "P99", balance: 7, status: "active", last_recharge_date: null },
 ];
 
 export const PLANS: PlanResponse[] = [

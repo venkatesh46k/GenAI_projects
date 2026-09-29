@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/overlays";
 import { Badge, Card, CardContent, CardHeader, CardTitle, Skeleton, Table, TableCell, TableHead, TableRow } from "@/components/ui/primitives";
 import { ApiError } from "@/lib/api";
-import { LOW_BALANCE, formatUsage, formatWhen, money } from "@/lib/format";
+import { LOW_BALANCE, LOW_BALANCE_WARNING, formatUsage, formatWhen, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { RechargeDialog } from "./RechargeDialog";
 
@@ -65,7 +65,10 @@ function CustomerView({ data }: { data: CustomerOverview }) {
   const { subscriber, plan, usage, transactions, disputes } = data;
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const barred = subscriber.status === "barred";
+  // Three tiers from the low-balance policy: barred and below-₹5 both bar out-of-bundle usage (the same message
+  // covers both, since a barred number is also below ₹5); ₹5 to below ₹10 only sends a warning SMS.
   const low = !barred && subscriber.balance < LOW_BALANCE;
+  const warn = !barred && !low && subscriber.balance < LOW_BALANCE_WARNING;
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,23 +96,28 @@ function CustomerView({ data }: { data: CustomerOverview }) {
         </Button>
       </div>
 
-      {(barred || low) && (
+      {(barred || low || warn) && (
         <div
           role="alert"
           data-testid="balance-alert"
-          className={cn("flex items-start gap-3 rounded-lg border px-4 py-3 text-sm", barred ? "border-danger/30 bg-danger-soft text-danger" : "border-warning/30 bg-warning-soft text-warning")}
+          className={cn(
+            "flex items-start gap-3 rounded-lg border px-4 py-3 text-sm",
+            barred || low ? "border-danger/30 bg-danger-soft text-danger" : "border-warning/30 bg-warning-soft text-warning",
+          )}
         >
-          {barred ? <Ban className="mt-0.5 size-4 shrink-0" /> : <TriangleAlert className="mt-0.5 size-4 shrink-0" />}
+          {barred || low ? <Ban className="mt-0.5 size-4 shrink-0" /> : <TriangleAlert className="mt-0.5 size-4 shrink-0" />}
           <p>
             {barred
               ? `This number is barred. A recharge that brings the balance to ${money(LOW_BALANCE)} or more lifts outgoing barring.`
-              : `Balance is below ${money(LOW_BALANCE)}: outgoing usage outside the plan bundle is barred.`}
+              : low
+                ? `Balance is below ${money(LOW_BALANCE)}: outgoing usage outside the plan bundle is barred.`
+                : `Low balance warning: the customer has been sent an SMS alert. Service is not restricted yet; a recharge below ${money(LOW_BALANCE)} will bar outgoing usage outside the plan bundle.`}
           </p>
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Balance" testId="kpi-balance" value={money(subscriber.balance)} tone={barred || low ? "danger" : undefined} />
+        <Kpi label="Balance" testId="kpi-balance" value={money(subscriber.balance)} tone={barred || low ? "danger" : warn ? "warning" : undefined} />
         <Kpi label="Plan" testId="kpi-plan" value={plan?.name ?? "No plan"} hint={plan ? `${plan.data_per_day_gb} GB/day · ${plan.voice_minutes} min · ${plan.sms_per_day} SMS/day` : undefined} />
         <Kpi label="Plan price" value={plan ? money(plan.price) : "-"} />
         <Kpi label="Validity" value={plan ? `${plan.validity_days} days` : "-"} />
@@ -286,14 +294,14 @@ function DisputesTable({ msisdn, disputes }: { msisdn: string; disputes: Dispute
   );
 }
 
-function Kpi({ label, value, hint, tone, testId }: { label: string; value: string; hint?: string; tone?: "danger"; testId?: string }) {
+function Kpi({ label, value, hint, tone, testId }: { label: string; value: string; hint?: string; tone?: "danger" | "warning"; testId?: string }) {
   return (
     <Card data-testid={testId}>
       <CardHeader className="pb-1">
         <CardTitle>{label}</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className={cn("tabular text-2xl font-semibold tracking-tight", tone === "danger" && "text-danger")}>{value}</p>
+        <p className={cn("tabular text-2xl font-semibold tracking-tight", tone === "danger" && "text-danger", tone === "warning" && "text-warning")}>{value}</p>
         {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
       </CardContent>
     </Card>
