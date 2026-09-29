@@ -52,7 +52,15 @@ async def main(copilot: bool) -> None:
         await c.wait_for_text("Sign in to look up customers")
         shots["01_login"] = await c.screenshot("01_login")
         await c.fill("#name", "Priya Sharma")
+        await c.click('label:has-text("Team lead")')  # so the role-gated pages (Plans) show the active buttons too
         await c.click(tid("login-submit"))
+        # Signing in from a customer-page URL returns there, not to /dashboard; visit it explicitly for the shot.
+        await c.navigate(f"{URL}/dashboard")
+        await c.wait_for_text("Today, at a glance.")
+        await c._call("browser_wait_for", time=1)  # let the KPIs and the chart finish loading
+        shots["00_dashboard"] = await c.screenshot("00_dashboard")
+
+        await c.navigate(f"{URL}/customers/{BASIC}")
         await c.wait_for_text("Prepaid subscriber")
         shots["03_customer_360"] = await c.screenshot("03_customer_360")
 
@@ -88,6 +96,24 @@ async def main(copilot: bool) -> None:
 
         await set_theme(c, "dark")
         shots["10_customer_dark"] = await c.screenshot("10_customer_dark")
+        await set_theme(c, "light")
+
+        await c.navigate(f"{URL}/reports")
+        await c.wait_for_text("Recharge revenue")
+        await c._call("browser_wait_for", time=1)  # let the chart finish drawing
+        shots["14_reports"] = await c.screenshot("14_reports")
+
+        await c.navigate(f"{URL}/plans")
+        await c.wait_for_text("Plans")
+        shots["15_plans"] = await c.screenshot("15_plans")
+
+        await c.navigate(f"{URL}/audit")
+        await c.wait_for_text("Audit log")
+        shots["16_audit"] = await c.screenshot("16_audit")
+
+        await c.navigate(f"{URL}/settings")
+        await c.wait_for_text("Copilot connection")
+        shots["17_settings"] = await c.screenshot("17_settings")
 
         if copilot:
             await c.click(tid("copilot-open"))

@@ -23,9 +23,17 @@ domain (rating, CDRs, recharges, disputes) I know well.
 *The walkthrough is a slideshow of the real screenshots below (captured with the same Playwright MCP client the QA agent
 uses), not a screen recording.*
 
-| Customers | Customer 360 |
+| Dashboard | Customers |
 |---|---|
-| ![](docs/images/02_customers.png) | ![](docs/images/03_customer_360.png) |
+| ![](docs/images/00_dashboard.png) | ![](docs/images/02_customers.png) |
+
+| Customer 360 | Reports |
+|---|---|
+| ![](docs/images/03_customer_360.png) | ![](docs/images/14_reports.png) |
+
+| Plan catalog | Audit log |
+|---|---|
+| ![](docs/images/15_plans.png) | ![](docs/images/16_audit.png) |
 
 | Recharge: review step | Barred customer |
 |---|---|

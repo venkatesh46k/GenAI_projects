@@ -4,6 +4,21 @@
 **Domain:** Prepaid telecom billing (CDR, rating, recharge, disputes)
 **Purpose:** Portfolio project demonstrating RAG, LangChain, LangGraph, Langflow, DeepEval, a moderation layer, and Playwright MCP-based autonomous UI testing.
 
+> **Status: this is the original build plan (Phases 0–8), kept as a historical record — not the current architecture.**
+> Phase 9 replaced the Streamlit console this document describes with a React + TypeScript front end, split the
+> backend into a Node/TypeScript billing and web tier plus a FastAPI AI service, and added a CRM feature set none of
+> this plan covers: a dashboard, a cross-customer dispute workspace with SLA tracking, customer profiles/tags/notes,
+> an activity timeline, a plan catalog, an audit log, role-based actions, and a Settings page. `ui/` and
+> `deploy/app.py`, which section 18 below gives full source for, no longer exist in the tree (last present at commit
+> `c33fe84`); the reference code in section 18 for those files is accurate only up to that commit. **For the
+> architecture and feature set as they actually stand, see [README.md](README.md)** (the Architecture, "The rest of
+> the console" and Repository sections). This document is still useful for the reasoning behind the earlier phases
+> (Phases 0–7: the mock billing API, the RAG chain, the LangGraph agents, moderation, DeepEval, the browser QA
+> agent). Of the prompt templates in section 10, the RAG, billing, dispute, escalation and moderation prompts
+> (10.3–10.6, 10.8) are close to what `agents/` still runs; the router (10.2) and Test-Gen (10.7) ones are not —
+> both were substantially rewritten since (the router to fix routing bugs, Test-Gen for the React console's
+> `data-testid` selectors and sign-in step) — read the real files for those two, not this section.
+
 ---
 
 ## 1. System Overview
