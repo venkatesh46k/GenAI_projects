@@ -200,11 +200,15 @@ describe("customer screens", () => {
   it("lists customers, filters by number text and by status", async () => {
     const { a, headers } = await authed();
     const all = (await a.inject({ method: "GET", url: "/api/customers", headers })).json();
-    expect(all.map((c: { msisdn: string }) => c.msisdn)).toEqual(["9123456780", "9876543210", "9988776655"]);
+    // 3 hand-picked fixtures plus the generated crowd from seed.ts (GENERATED_COUNT = 50).
+    expect(all).toHaveLength(53);
+    expect(all.map((c: { msisdn: string }) => c.msisdn)).toEqual(expect.arrayContaining(["9123456780", "9876543210", "9988776655"]));
     const q = (await a.inject({ method: "GET", url: "/api/customers?q=9876", headers })).json();
     expect(q.map((c: { msisdn: string }) => c.msisdn)).toEqual([MSISDN]);
     const barred = (await a.inject({ method: "GET", url: "/api/customers?status=barred", headers })).json();
-    expect(barred.map((c: { msisdn: string }) => c.msisdn)).toEqual(["9988776655"]);
+    // the 1 hand-picked barred fixture, plus every 10th generated customer (seed.ts's STATUS_FOR)
+    expect(barred).toHaveLength(6);
+    expect(barred.map((c: { msisdn: string }) => c.msisdn)).toEqual(expect.arrayContaining(["9988776655"]));
   });
 
   it("treats % and _ in the search box as plain text, not wildcards", async () => {
@@ -218,14 +222,15 @@ describe("customer screens", () => {
   it("rejects an unknown status filter and an oversized search", async () => {
     const { a, headers } = await authed();
     expect((await a.inject({ method: "GET", url: "/api/customers?status=vip", headers })).statusCode).toBe(422);
-    expect((await a.inject({ method: "GET", url: `/api/customers?q=${"9".repeat(21)}`, headers })).statusCode).toBe(422);
+    expect((await a.inject({ method: "GET", url: `/api/customers?q=${"9".repeat(41)}`, headers })).statusCode).toBe(422); // longer than the max (a phone number or a name)
   });
 
   it("returns everything the Customer 360 screen needs in one call", async () => {
     const { a, headers } = await authed();
     const overview = (await a.inject({ method: "GET", url: `/api/customers/${MSISDN}/overview`, headers })).json();
-    expect(Object.keys(overview).sort()).toEqual(["disputes", "notes", "plan", "subscriber", "tags", "transactions", "usage"]);
+    expect(Object.keys(overview).sort()).toEqual(["disputes", "notes", "plan", "profile", "subscriber", "tags", "transactions", "usage"]);
     expect(overview.subscriber).toMatchObject({ msisdn: MSISDN, balance: 45.5, status: "active" });
+    expect(overview.profile).toBeNull(); // no profile is seeded for the 3 hand-picked fixtures
     expect(overview.plan).toMatchObject({ plan_id: "PLAN_199", name: "Basic 199" });
     expect(overview.usage).toHaveLength(10);
     expect(overview.disputes.map((d: { dispute_id: string }) => d.dispute_id)).toEqual(["D-100001"]);
@@ -290,18 +295,19 @@ describe("tags", () => {
 
   it("adds and removes a tag, and lists it back on the customer and the all-tags menu", async () => {
     const { a, headers } = await authed();
-    const added = await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/tags`, headers, payload: { tag: "VIP" } });
+    // a tag name the seed data never uses, so this test's exact-match assertions do not depend on seed.ts's choices
+    const added = await a.inject({ method: "POST", url: `/api/customers/${MSISDN}/tags`, headers, payload: { tag: "QA-Only-Tag" } });
     expect(added.statusCode).toBe(200);
-    expect(added.json()).toEqual({ tags: ["VIP"] });
+    expect(added.json()).toEqual({ tags: ["QA-Only-Tag"] });
 
     const overview = (await a.inject({ method: "GET", url: `/api/customers/${MSISDN}/overview`, headers })).json();
-    expect(overview.tags).toEqual(["VIP"]);
-    expect((await a.inject({ method: "GET", url: "/api/tags", headers })).json()).toEqual(["VIP"]);
+    expect(overview.tags).toEqual(["QA-Only-Tag"]);
+    expect((await a.inject({ method: "GET", url: "/api/tags", headers })).json()).toContain("QA-Only-Tag");
 
-    const list = (await a.inject({ method: "GET", url: `/api/customers?tag=VIP`, headers })).json();
+    const list = (await a.inject({ method: "GET", url: `/api/customers?tag=QA-Only-Tag`, headers })).json();
     expect(list.map((c: { msisdn: string }) => c.msisdn)).toEqual([MSISDN]);
 
-    const removed = await a.inject({ method: "DELETE", url: `/api/customers/${MSISDN}/tags/${encodeURIComponent("VIP")}`, headers });
+    const removed = await a.inject({ method: "DELETE", url: `/api/customers/${MSISDN}/tags/${encodeURIComponent("QA-Only-Tag")}`, headers });
     expect(removed.statusCode).toBe(200);
     expect(removed.json()).toEqual({ tags: [] });
   });
@@ -397,7 +403,8 @@ describe("dashboard", () => {
     const a = build();
     const headers = { cookie: await signIn(a, { name: "Priya", role: "agent" }) };
     const before = (await a.inject({ method: "GET", url: "/api/dashboard", headers })).json();
-    expect(before).toMatchObject({ customer_count: 3, barred_count: 1 });
+    // 53 total (3 fixtures + 50 generated), 6 barred (1 fixture + 5 generated: see seed.ts's STATUS_FOR)
+    expect(before).toMatchObject({ customer_count: 53, barred_count: 6 });
     expect(before.revenue_last_7_days).toHaveLength(7);
     expect(before.open_disputes).toBeGreaterThanOrEqual(1);
 

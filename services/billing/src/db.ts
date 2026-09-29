@@ -66,6 +66,23 @@ CREATE TABLE IF NOT EXISTS notes (
     created_at TEXT NOT NULL,
     FOREIGN KEY (msisdn) REFERENCES subscribers(msisdn)
 );
+CREATE TABLE IF NOT EXISTS customer_profiles (
+    msisdn TEXT PRIMARY KEY,
+    name TEXT,
+    email TEXT,
+    city TEXT,
+    segment TEXT,
+    FOREIGN KEY (msisdn) REFERENCES subscribers(msisdn)
+);
+CREATE TABLE IF NOT EXISTS audit_log (
+    id TEXT PRIMARY KEY,
+    at TEXT NOT NULL,
+    actor_name TEXT NOT NULL,
+    actor_role TEXT NOT NULL,
+    action TEXT NOT NULL,
+    msisdn TEXT,
+    detail TEXT
+);
 `;
 
 export function openDb(file: string = process.env.BILLING_DB_PATH ?? DEFAULT_DB_PATH): DatabaseSync {

@@ -35,7 +35,7 @@ export const CustomerRechargeBody = z.strictObject({
 });
 
 export const CustomersQuery = z.object({
-  q: z.string().max(20).optional(),
+  q: z.string().max(40).optional(), // a phone number or a customer's name
   status: z.enum(["active", "barred", "expired"]).optional(),
   tag: z.string().max(24).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
@@ -60,6 +60,25 @@ export const AddNoteBody = z.strictObject({ text: z.string().trim().min(1).max(2
 
 export const RESOLUTION_OUTCOMES = ["resolved", "rejected"] as const;
 export const ResolveDisputeBody = z.strictObject({ outcome: z.enum(RESOLUTION_OUTCOMES) });
+
+export const PlanBody = z.strictObject({
+  plan_id: z
+    .string()
+    .trim()
+    .min(2)
+    .max(20)
+    .regex(/^[A-Z0-9_]+$/, "Use uppercase letters, digits and underscores, e.g. PLAN_249"),
+  name: z.string().trim().min(2).max(40),
+  price: z.number().positive().max(100_000),
+  validity_days: z.number().int().positive().max(3650),
+  data_per_day_gb: z.number().min(0).max(1000),
+  voice_minutes: z.number().int().min(0).max(1_000_000),
+  sms_per_day: z.number().int().min(0).max(10_000),
+});
+export const UpdatePlanBody = PlanBody.omit({ plan_id: true });
+
+export const ReportsQuery = z.object({ days: z.coerce.number().int().refine((v) => [7, 30, 90].includes(v), "days must be 7, 30 or 90").default(7) });
+export const AuditQuery = z.object({ msisdn: z.string().min(1).optional(), action: z.string().min(1).optional(), limit: limit(100) });
 
 // ---- response shapes (the API contract; mirrors mock_api/models.py) ----
 
@@ -143,19 +162,46 @@ export interface NoteItem {
   created_at: string;
 }
 
-/** A customer row for the list screen: SubscriberItem plus the tags an agent has put on it. */
-export interface CustomerListItem extends SubscriberItem {
+/** Contact/account details beyond the phone number. Every field is nullable: profiles are filled in over time, not
+ * required up front (the demo data has one for every generated customer, but not for the 3 original fixtures). */
+export interface CustomerProfile {
+  name: string | null;
+  email: string | null;
+  city: string | null;
+  segment: string | null;
+}
+
+/** A customer row for the list screen: SubscriberItem plus its tags and profile. */
+export interface CustomerListItem extends SubscriberItem, CustomerProfile {
   tags: string[];
 }
 
 export interface CustomerOverview {
   subscriber: SubscriberItem;
+  profile: CustomerProfile | null;
   plan: PlanResponse | null;
   usage: CdrItem[];
   transactions: TransactionItem[];
   disputes: DisputeSummary[];
   notes: NoteItem[];
   tags: string[];
+}
+
+export interface AuditEntry {
+  id: string;
+  at: string;
+  actor_name: string;
+  actor_role: Role;
+  action: string;
+  msisdn: string | null;
+  detail: string | null;
+}
+
+export interface ReportStats {
+  plan_distribution: Array<{ plan_id: string; name: string; customers: number }>;
+  revenue_trend: Array<{ date: string; amount: number }>;
+  usage_by_type: Array<{ call_type: string; count: number; total_charge: number }>;
+  days: number;
 }
 
 export interface DashboardStats {

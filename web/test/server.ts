@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import type { CustomerOverview, DashboardStats, DisputeSummary, NoteItem, PlanResponse, SubscriberItem } from "@contract/schemas";
+import type { AuditEntry, CustomerOverview, CustomerProfile, DashboardStats, DisputeSummary, NoteItem, PlanResponse, ReportStats, SubscriberItem } from "@contract/schemas";
 
 export const SUBSCRIBERS: SubscriberItem[] = [
   { msisdn: "9876543210", plan_id: "P199", balance: 120.5, status: "active", last_recharge_date: "2026-09-01T10:00:00Z" },
@@ -9,10 +9,15 @@ export const SUBSCRIBERS: SubscriberItem[] = [
   { msisdn: "9876500004", plan_id: "P99", balance: 7, status: "active", last_recharge_date: null },
 ];
 
-export const PLANS: PlanResponse[] = [
+export const PROFILES: Record<string, CustomerProfile> = {
+  "9876543210": { name: "Ananya Sharma", email: "ananya.sharma@example.test", city: "Pune", segment: "Individual" },
+};
+
+const initialPlans = (): PlanResponse[] => [
   { plan_id: "P99", name: "Basic", price: 99, validity_days: 28, data_per_day_gb: 1, voice_minutes: 100, sms_per_day: 100 },
   { plan_id: "P199", name: "Plus", price: 199, validity_days: 28, data_per_day_gb: 1.5, voice_minutes: 300, sms_per_day: 100 },
 ];
+export let PLANS: PlanResponse[] = initialPlans();
 
 const initialDisputes = (): DisputeSummary[] => [
   { dispute_id: "DSP-1", msisdn: "9876543210", amount_disputed: 50, reason: "Charged twice", status: "open", created_at: "2026-09-11T09:00:00Z" },
@@ -31,7 +36,43 @@ const DASHBOARD: DashboardStats = {
   revenue_last_7_days: Array.from({ length: 7 }, (_, i) => ({ date: `2026-09-2${i}`, amount: i * 25 })),
 };
 
-/** Mutable fixture state (tags, notes, disputes). `resetFixtures()` restores all three between tests. */
+const REPORTS: Record<7 | 30 | 90, ReportStats> = {
+  7: {
+    days: 7,
+    plan_distribution: [
+      { plan_id: "P99", name: "Basic", customers: 2 },
+      { plan_id: "P199", name: "Plus", customers: 1 },
+    ],
+    revenue_trend: Array.from({ length: 7 }, (_, i) => ({ date: `2026-09-2${i}`, amount: i * 25 })),
+    usage_by_type: [
+      { call_type: "voice", count: 40, total_charge: 120.5 },
+      { call_type: "data", count: 30, total_charge: 88.25 },
+      { call_type: "sms", count: 20, total_charge: 40 },
+    ],
+  },
+  30: {
+    days: 30,
+    plan_distribution: [
+      { plan_id: "P99", name: "Basic", customers: 2 },
+      { plan_id: "P199", name: "Plus", customers: 1 },
+    ],
+    revenue_trend: Array.from({ length: 30 }, (_, i) => ({ date: `2026-08-${String(i + 1).padStart(2, "0")}`, amount: (i % 5) * 40 })),
+    usage_by_type: [
+      { call_type: "voice", count: 160, total_charge: 480.5 },
+      { call_type: "data", count: 120, total_charge: 350.25 },
+      { call_type: "sms", count: 80, total_charge: 160 },
+    ],
+  },
+  90: { days: 90, plan_distribution: [], revenue_trend: [], usage_by_type: [] },
+};
+
+const AUDIT: AuditEntry[] = [
+  { id: "A-1", at: "2026-09-29T10:00:00Z", actor_name: "Priya", actor_role: "agent", action: "recharge", msisdn: "9876543210", detail: "₹199.00 · new balance ₹319.50 · TXN-1" },
+  { id: "A-2", at: "2026-09-29T09:00:00Z", actor_name: "Lead L", actor_role: "team_lead", action: "dispute_escalated", msisdn: "9876500002", detail: "DSP-2 · TCK-1" },
+  { id: "A-3", at: "2026-09-28T09:00:00Z", actor_name: "Priya", actor_role: "agent", action: "tag_added", msisdn: "9876543210", detail: "VIP" },
+];
+
+/** Mutable fixture state (tags, notes, disputes, plans). `resetFixtures()` restores all of it between tests. */
 export let TAGS: Record<string, string[]> = {};
 export let NOTES: Record<string, NoteItem[]> = {};
 export let DISPUTES: DisputeSummary[] = initialDisputes();
@@ -40,6 +81,7 @@ export function resetFixtures() {
   TAGS = {};
   NOTES = {};
   DISPUTES = initialDisputes();
+  PLANS = initialPlans();
 }
 
 export function overviewFor(msisdn: string): CustomerOverview | null {
@@ -47,6 +89,7 @@ export function overviewFor(msisdn: string): CustomerOverview | null {
   if (!subscriber) return null;
   return {
     subscriber,
+    profile: PROFILES[msisdn] ?? null,
     plan: PLANS.find((p) => p.plan_id === subscriber.plan_id) ?? null,
     usage: [{ cdr_id: "C1", call_type: "voice", duration_sec: 125, data_mb: null, charge: 1.5, timestamp: "2026-09-10T09:00:00Z" }],
     transactions: [{ txn_id: "TXN1", type: "recharge", amount: 199, balance_after: 199, timestamp: "2026-09-01T10:00:00Z" }],
@@ -68,9 +111,11 @@ export const handlers = [
     const q = url.searchParams.get("q") ?? "";
     const status = url.searchParams.get("status") ?? "";
     const tag = url.searchParams.get("tag") ?? "";
+    const matchesQuery = (s: SubscriberItem) => !q || s.msisdn.includes(q) || (PROFILES[s.msisdn]?.name ?? "").toLowerCase().includes(q.toLowerCase());
     return HttpResponse.json(
-      SUBSCRIBERS.filter((s) => s.msisdn.includes(q) && (!status || s.status === status) && (!tag || (TAGS[s.msisdn] ?? []).includes(tag))).map((s) => ({
+      SUBSCRIBERS.filter((s) => matchesQuery(s) && (!status || s.status === status) && (!tag || (TAGS[s.msisdn] ?? []).includes(tag))).map((s) => ({
         ...s,
+        ...(PROFILES[s.msisdn] ?? { name: null, email: null, city: null, segment: null }),
         tags: TAGS[s.msisdn] ?? [],
       })),
     );
@@ -119,6 +164,29 @@ export const handlers = [
     return HttpResponse.json({ dispute_id: dispute.dispute_id, status: outcome, reason: dispute.reason, amount_disputed: dispute.amount_disputed });
   }),
   http.get("/api/dashboard", () => HttpResponse.json(DASHBOARD)),
+  http.get("/api/reports", ({ request }) => {
+    const days = Number(new URL(request.url).searchParams.get("days") ?? "7") as 7 | 30 | 90;
+    return HttpResponse.json(REPORTS[days] ?? REPORTS[7]);
+  }),
+  http.get("/api/audit", ({ request }) => {
+    const url = new URL(request.url);
+    const msisdn = url.searchParams.get("msisdn");
+    const action = url.searchParams.get("action");
+    return HttpResponse.json(AUDIT.filter((a) => (!msisdn || a.msisdn === msisdn) && (!action || a.action === action)));
+  }),
+  http.get("/api/audit/actions", () => HttpResponse.json([...new Set(AUDIT.map((a) => a.action))].sort())),
+  http.post("/api/plans", async ({ request }) => {
+    const body = (await request.json()) as PlanResponse;
+    PLANS.push(body);
+    return HttpResponse.json(body);
+  }),
+  http.put("/api/plans/:plan_id", async ({ params, request }) => {
+    const body = (await request.json()) as Omit<PlanResponse, "plan_id">;
+    const index = PLANS.findIndex((p) => p.plan_id === params.plan_id);
+    if (index === -1) return HttpResponse.json({ detail: "Plan not found" }, { status: 404 });
+    PLANS[index] = { plan_id: String(params.plan_id), ...body };
+    return HttpResponse.json(PLANS[index]);
+  }),
 ];
 
 export const server = setupServer(...handlers);

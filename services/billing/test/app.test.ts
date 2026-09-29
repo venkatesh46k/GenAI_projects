@@ -76,9 +76,10 @@ describe("recharge", () => {
   });
 
   it("rejects an unknown subscriber and leaves no trace", async () => {
+    const before = (db.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number }).n; // seed.ts gives the generated crowd a recharge history
     const res = await recharge(99, "123");
     expect(res.statusCode).toBe(404);
-    expect((db.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number }).n).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number }).n).toBe(before);
   });
 
   it.each([0, -5])("rejects a non-positive amount (%s) with 422", async (amount) => {
@@ -151,7 +152,9 @@ describe("usage, transactions and subscribers", () => {
 
   it("lists the seeded subscribers in number order, with a limit", async () => {
     const rows = (await get("/subscribers")).json();
-    expect(rows.map((r: { msisdn: string }) => r.msisdn)).toEqual(["9123456780", "9876543210", "9988776655"]);
+    // 3 hand-picked fixtures plus the generated crowd from seed.ts (GENERATED_COUNT = 50).
+    expect(rows).toHaveLength(53);
+    expect(rows.map((r: { msisdn: string }) => r.msisdn).slice(-3)).toEqual(["9123456780", "9876543210", "9988776655"]); // sort last: "9" > "7"
     expect(rows.find((r: { msisdn: string }) => r.msisdn === "9988776655").status).toBe("barred");
     expect((await get("/subscribers?limit=2")).json()).toHaveLength(2);
   });
@@ -194,7 +197,7 @@ describe("disputes", () => {
   it("refuses a dispute for a subscriber that does not exist", async () => {
     const res = await post("/dispute", { msisdn: "0000000000", reason: "x", amount_disputed: 1 });
     expect(res.statusCode).toBe(404);
-    expect((await get("/disputes")).json()).toHaveLength(2); // still only the two seeded ones
+    expect((await get("/disputes")).json()).toHaveLength(14); // unchanged: the seeded ones (2 fixtures + 12 generated)
   });
 
   it.each([
@@ -207,7 +210,8 @@ describe("disputes", () => {
 
   it("lists all disputes, or one customer's", async () => {
     const everything = (await get("/disputes")).json();
-    expect(everything.map((d: { dispute_id: string }) => d.dispute_id).sort()).toEqual(["D-100001", "D-100002"]);
+    expect(everything).toHaveLength(14);
+    expect(everything.map((d: { dispute_id: string }) => d.dispute_id)).toEqual(expect.arrayContaining(["D-100001", "D-100002"]));
     const mine = (await get(`/disputes?msisdn=${MSISDN}`)).json();
     expect(mine).toHaveLength(1);
     expect(mine[0]).toMatchObject({ dispute_id: "D-100001", msisdn: MSISDN, status: "open" });

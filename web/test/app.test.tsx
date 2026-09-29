@@ -140,7 +140,12 @@ describe("customer page", () => {
   it("shows balance, plan and tabs", async () => {
     const user = userEvent.setup();
     renderApp("/customers/9876543210");
-    expect(await screen.findByTestId("customer-number")).toHaveTextContent("9876543210");
+    // this customer has a profile in the fixtures, so the heading shows their name; the number still appears nearby
+    expect(await screen.findByTestId("customer-number")).toHaveTextContent("Ananya Sharma");
+    expect(screen.getByTestId("customer-subheading")).toHaveTextContent("9876543210");
+    // "Prepaid subscriber" is the page-ready text tests_qa/scenarios.py waits for after sign-in: it must survive
+    // regardless of whether a profile is on file (a customer with one shows differently, but not this).
+    expect(screen.getByTestId("customer-subheading")).toHaveTextContent(/^Prepaid subscriber/);
     expect(screen.getByTestId("kpi-balance")).toHaveTextContent("₹120.50");
     expect(screen.getByTestId("kpi-plan")).toHaveTextContent("Plus");
     expect(screen.queryByTestId("balance-alert")).not.toBeInTheDocument();

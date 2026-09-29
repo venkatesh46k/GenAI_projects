@@ -1,5 +1,5 @@
 import { Command } from "cmdk";
-import { AlertOctagon, LayoutDashboard, LogOut, Monitor, Moon, Search, Sun, Users } from "lucide-react";
+import { AlertOctagon, BarChart3, History, LayoutDashboard, LogOut, Monitor, Moon, Receipt, Search, Settings, Sun, Users } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCustomers, useLogout } from "@/api/hooks";
@@ -75,6 +75,18 @@ export function CommandPalette({ open, onOpenChange }: Props) {
           </Item>
           <Item value="go disputes workspace" onSelect={run(() => navigate("/disputes"))} testId="palette-go-disputes">
             <AlertOctagon className="size-4" /> Disputes
+          </Item>
+          <Item value="go reports" onSelect={run(() => navigate("/reports"))} testId="palette-go-reports">
+            <BarChart3 className="size-4" /> Reports
+          </Item>
+          <Item value="go plans catalog" onSelect={run(() => navigate("/plans"))} testId="palette-go-plans">
+            <Receipt className="size-4" /> Plans
+          </Item>
+          <Item value="go audit log" onSelect={run(() => navigate("/audit"))} testId="palette-go-audit">
+            <History className="size-4" /> Audit log
+          </Item>
+          <Item value="go settings" onSelect={run(() => navigate("/settings"))} testId="palette-go-settings">
+            <Settings className="size-4" /> Settings
           </Item>
         </Group>
 

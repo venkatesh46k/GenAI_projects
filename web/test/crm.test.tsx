@@ -118,7 +118,8 @@ describe("dispute workspace", () => {
     renderApp("/disputes");
     await screen.findByTestId("disputes-workspace-table");
     await user.click(within(screen.getByTestId("workspace-dispute-DSP-1")).getByRole("link"));
-    expect(await screen.findByTestId("customer-number")).toHaveTextContent("9876543210");
+    expect(await screen.findByTestId("customer-number")).toHaveTextContent("Ananya Sharma"); // DSP-1's customer has a profile
+    expect(screen.getByTestId("customer-subheading")).toHaveTextContent("9876543210");
   });
 });
 

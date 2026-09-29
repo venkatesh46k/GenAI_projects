@@ -59,15 +59,23 @@ sources and billing calls behind it in "How this was answered".
 
 Beyond the Copilot, the console has the CRM pieces a real support team would expect:
 
+- **Customer profiles** — name, email, city and segment (Individual/Business) alongside the phone number, searchable
+  by name as well as by number. 50 generated customers plus the 3 original demo fixtures, with usage, recharges and
+  disputes spread realistically over the last 90 days, so lists, filters and charts have something real to show.
 - **Dashboard** — today's recharges, barred count, total balance held, disputes needing attention, and a 7-day revenue
   chart, all real numbers from the database, not fixtures.
 - **Dispute workspace** — every dispute across every customer in one table, filterable by status, with an approximate
   SLA countdown against the 10-working-day SOP target.
+- **Reports** — plan mix, a revenue trend over 7/30/90 days, and usage totals by type, for a period you choose.
+- **Plan catalog** — every plan a recharge or report draws from, with a team-lead-only create/edit form.
+- **Audit log** — every recharge, tag change, dispute decision and plan change, who did it and when, filterable by
+  customer or action, not just visible per customer.
 - **Tags and notes** — free-form labels on a customer (VIP, At risk, ...), filterable from the customer list, and
   internal notes an agent can leave on an account (not visible to the customer).
 - **Activity timeline** — usage, transactions, disputes and notes merged into one chronological feed per customer.
-- **Role-based actions** — only a team lead may escalate or resolve/reject a dispute, enforced by the server (a 403 for
-  an agent), not just hidden in the UI; an agent still sees the disabled button and why.
+- **Settings** — the signed-in agent's profile and role, the theme, and the Copilot's live connection status.
+- **Role-based actions** — only a team lead may escalate or resolve/reject a dispute or change the plan catalog,
+  enforced by the server (a 403 for an agent), not just hidden in the UI; an agent still sees the disabled button and why.
 - **Recently viewed, CSV export, keyboard shortcuts (`?`)** — the smaller conveniences a CRM has.
 
 ## Architecture
@@ -156,7 +164,7 @@ is the real test of the Dockerfile.
 | Answer quality (DeepEval, `gpt-4.1` judge, 15 fixtures) | 36 / 36 tests, 93 metric results, 0 judge errors, about $0.46 per full run |
 | Browser QA agent, 5 recharge scenarios against the React console | 5 / 5 pass in a real browser; LLM-written scenarios pass too; also triggered from the Copilot |
 | Can the QA agent fail? | Yes. With the UI deliberately broken (review step showing amount + 1; earlier, a double charge) the right scenarios failed with precise messages |
-| Automated tests | Python 245 · Node 140 · React 47 · billing contract 19 on **both** implementations |
+| Automated tests | Python 266 · Node 140 · React 58 · billing contract 19 on **both** implementations |
 
 Details: [eval/README.md](eval/README.md) (thresholds, judge comparison, what the suite found) and
 [tests_qa/README.md](tests_qa/README.md).
@@ -171,6 +179,15 @@ Details: [eval/README.md](eval/README.md) (thresholds, judge comparison, what th
   when the first question failed; fixed with a lock and a test that reproduced 8 clients for 8 callers.
 - **A policy question was treated as a balance lookup:** "What happens when my balance drops below ₹5?" hit the balance
   keyword and asked for a phone number. Found by using the Copilot; process questions now go to the knowledge base.
+- **The same bug came back for "dispute":** "How long does a dispute take to resolve?" was fixed for balance/recharge
+  wording but not dispute/escalation wording, because the policy-question check ran after those keyword checks, not
+  before. Reported by a user testing the live console. Fixed by checking policy phrasing first, unconditionally.
+- **A CRM feature broke the browser QA agent without a single unit test failing:** adding customer profiles removed the
+  literal text "Prepaid subscriber" from the customer page for anyone with a name on file, and every browser scenario
+  (and the Test-Gen prompt) waits for exactly that text after sign-in. All 58 web tests still passed, because none of
+  them exercise a real page-ready wait the way a real browser does. Caught by actually running the scenarios in a
+  browser before calling the feature done, not by the unit suite; fixed by keeping that text fixed regardless of the
+  profile, and a test now pins it.
 - **Browser tests silently failed under a server that switches asyncio loops on Windows** (subprocess creation raised
   `NotImplementedError`). Fixed with a dedicated loop, with a test that reproduces it.
 - **A missing asset returned the HTML page with status 200,** so a stale build showed a blank screen and a MIME error.

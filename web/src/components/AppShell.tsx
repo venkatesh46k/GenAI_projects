@@ -1,4 +1,4 @@
-import { AlertOctagon, History, Keyboard, LayoutDashboard, LogOut, Search, Sparkles, Users } from "lucide-react";
+import { AlertOctagon, BarChart3, History, Keyboard, LayoutDashboard, LogOut, Receipt, Search, Settings, Sparkles, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useMatch } from "react-router-dom";
 import { useLogout, useSession } from "@/api/hooks";
@@ -90,6 +90,18 @@ export function AppShell() {
           </NavItem>
           <NavItem to="/disputes" icon={AlertOctagon}>
             Disputes
+          </NavItem>
+          <NavItem to="/reports" icon={BarChart3}>
+            Reports
+          </NavItem>
+          <NavItem to="/plans" icon={Receipt}>
+            Plans
+          </NavItem>
+          <NavItem to="/audit" icon={History}>
+            Audit log
+          </NavItem>
+          <NavItem to="/settings" icon={Settings}>
+            Settings
           </NavItem>
         </nav>
 

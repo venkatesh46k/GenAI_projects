@@ -88,8 +88,19 @@ export function CustomersPage() {
   function exportCsv() {
     downloadCsv(
       "customers",
-      ["Number", "Status", "Plan", "Balance", "Last recharge", "Tags"],
-      rows.map((c) => [c.msisdn, c.status, c.plan_id ?? "", c.balance.toFixed(2), c.last_recharge_date ?? "", c.tags.join("; ")]),
+      ["Number", "Name", "Email", "City", "Segment", "Status", "Plan", "Balance", "Last recharge", "Tags"],
+      rows.map((c) => [
+        c.msisdn,
+        c.name ?? "",
+        c.email ?? "",
+        c.city ?? "",
+        c.segment ?? "",
+        c.status,
+        c.plan_id ?? "",
+        c.balance.toFixed(2),
+        c.last_recharge_date ?? "",
+        c.tags.join("; "),
+      ]),
     );
   }
 
@@ -118,12 +129,11 @@ export function CustomersPage() {
             <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
-              inputMode="numeric"
-              placeholder="Search by number…"
-              aria-label="Search customers by number"
+              placeholder="Search by number or name…"
+              aria-label="Search customers by number or name"
               data-testid="customers-search"
               className="pl-9 pr-9"
-              maxLength={20}
+              maxLength={40}
               value={text}
               onChange={(event) => setText(event.target.value)}
             />
@@ -220,6 +230,12 @@ export function CustomersPage() {
                     >
                       {customer.msisdn}
                     </Link>
+                    {customer.name && (
+                      <p className="text-xs text-muted-foreground">
+                        {customer.name}
+                        {customer.city && ` · ${customer.city}`}
+                      </p>
+                    )}
                     {customer.tags.length > 0 && (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {customer.tags.map((t) => (

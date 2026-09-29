@@ -12,11 +12,15 @@ import { HttpError } from "./errors.js";
 import {
   AddNoteBody,
   AddTagBody,
+  AuditQuery,
   CustomerRechargeBody,
   CustomersQuery,
   DisputesQuery,
   LoginBody,
+  PlanBody,
+  ReportsQuery,
   ResolveDisputeBody,
+  UpdatePlanBody,
   type CustomerOverview,
   type SessionUser,
 } from "./schemas.js";
@@ -164,12 +168,36 @@ export function buildWebApp(db: DatabaseSync, options: FastifyServerOptions = {}
     api.post<{ Params: { msisdn: string } }>("/api/customers/:msisdn/recharge", async (req) => {
       const body = parse(CustomerRechargeBody, req.body, "body");
       const receipt = billing.recharge(db, { msisdn: req.params.msisdn, ...body });
-      // The audit trail: who did what. (The demo tables carry no user column, so it lives in the log.)
       req.log.info({ user: req.user?.name, msisdn: req.params.msisdn, amount: body.amount, txn: receipt.txn_id }, "recharge");
+      billing.recordAudit(db, {
+        actor_name: req.user!.name,
+        actor_role: req.user!.role,
+        action: "recharge",
+        msisdn: req.params.msisdn,
+        detail: `₹${body.amount.toFixed(2)} · new balance ₹${receipt.new_balance.toFixed(2)} · ${receipt.txn_id}`,
+      });
       return receipt;
     });
 
+    // ------------------------------------------------------------------ plans
+
     api.get("/api/plans", async () => billing.listPlans(db));
+
+    api.post("/api/plans", async (req) => {
+      requireTeamLead(req);
+      const body = parse(PlanBody, req.body, "body");
+      const plan = billing.createPlan(db, body);
+      billing.recordAudit(db, { actor_name: req.user!.name, actor_role: req.user!.role, action: "plan_created", detail: `${plan.plan_id} · ${plan.name} · ₹${plan.price}` });
+      return plan;
+    });
+
+    api.put<{ Params: { plan_id: string } }>("/api/plans/:plan_id", async (req) => {
+      requireTeamLead(req);
+      const body = parse(UpdatePlanBody, req.body, "body");
+      const plan = billing.updatePlan(db, req.params.plan_id, body);
+      billing.recordAudit(db, { actor_name: req.user!.name, actor_role: req.user!.role, action: "plan_updated", detail: `${plan.plan_id} · ${plan.name} · ₹${plan.price}` });
+      return plan;
+    });
 
     // ------------------------------------------------------------------ tags
 
@@ -177,11 +205,16 @@ export function buildWebApp(db: DatabaseSync, options: FastifyServerOptions = {}
 
     api.post<{ Params: { msisdn: string } }>("/api/customers/:msisdn/tags", async (req) => {
       const { tag } = parse(AddTagBody, req.body, "body");
-      return { tags: billing.addTag(db, req.params.msisdn, tag) };
+      const tags = billing.addTag(db, req.params.msisdn, tag);
+      billing.recordAudit(db, { actor_name: req.user!.name, actor_role: req.user!.role, action: "tag_added", msisdn: req.params.msisdn, detail: tag });
+      return { tags };
     });
 
     api.delete<{ Params: { msisdn: string; tag: string } }>("/api/customers/:msisdn/tags/:tag", async (req) => {
-      return { tags: billing.removeTag(db, req.params.msisdn, decodeURIComponent(req.params.tag)) };
+      const tag = decodeURIComponent(req.params.tag);
+      const tags = billing.removeTag(db, req.params.msisdn, tag);
+      billing.recordAudit(db, { actor_name: req.user!.name, actor_role: req.user!.role, action: "tag_removed", msisdn: req.params.msisdn, detail: tag });
+      return { tags };
     });
 
     // ------------------------------------------------------------------ notes
@@ -200,22 +233,38 @@ export function buildWebApp(db: DatabaseSync, options: FastifyServerOptions = {}
 
     api.post<{ Params: { dispute_id: string } }>("/api/disputes/:dispute_id/escalate", async (req) => {
       requireTeamLead(req);
+      const msisdn = billing.getDisputeMsisdn(db, req.params.dispute_id);
       const result = billing.escalateDispute(db, req.params.dispute_id);
       req.log.info({ user: req.user?.name, dispute: result.dispute_id, ticket: result.ticket_id }, "dispute escalated");
+      billing.recordAudit(db, { actor_name: req.user!.name, actor_role: req.user!.role, action: "dispute_escalated", msisdn, detail: `${result.dispute_id} · ${result.ticket_id}` });
       return result;
     });
 
     api.post<{ Params: { dispute_id: string } }>("/api/disputes/:dispute_id/resolve", async (req) => {
       requireTeamLead(req);
       const { outcome } = parse(ResolveDisputeBody, req.body, "body");
+      const msisdn = billing.getDisputeMsisdn(db, req.params.dispute_id);
       const result = billing.resolveDispute(db, req.params.dispute_id, outcome);
       req.log.info({ user: req.user?.name, dispute: result.dispute_id, outcome }, "dispute resolved");
+      billing.recordAudit(db, { actor_name: req.user!.name, actor_role: req.user!.role, action: `dispute_${outcome}`, msisdn, detail: result.dispute_id });
       return result;
     });
 
-    // ------------------------------------------------------------------ dashboard
+    // ------------------------------------------------------------------ dashboard, reports, audit log
 
     api.get("/api/dashboard", async () => billing.dashboardStats(db));
+
+    api.get("/api/reports", async (req) => {
+      const { days } = parse(ReportsQuery, req.query, "query");
+      return billing.reportStats(db, days as 7 | 30 | 90);
+    });
+
+    api.get("/api/audit", async (req) => {
+      const { msisdn, action, limit } = parse(AuditQuery, req.query, "query");
+      return billing.listAudit(db, { msisdn, action, limit });
+    });
+
+    api.get("/api/audit/actions", async () => billing.listAuditActions(db));
   });
 
   void app.register(chatRoutes(config.ai));

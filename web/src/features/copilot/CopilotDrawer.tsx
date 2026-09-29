@@ -1,11 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
 import { ArrowUp, Check, ChevronRight, Loader2, RotateCcw, ShieldAlert, Sparkles, Square, User, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
-import { keys } from "@/api/hooks";
+import { useHealth } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/overlays";
 import { Badge } from "@/components/ui/primitives";
-import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ChatError, streamChat, type ChatResponse, type Step } from "./stream";
 
@@ -37,11 +35,6 @@ const ROUTE_LABEL: Record<string, string> = {
 const SUGGESTIONS_WITH_CONTEXT = ["What is this customer's balance and plan?", "Why was the last recharge not applied?", "Raise a dispute for a double charge of ₹50"];
 const SUGGESTIONS = ["How does a recharge get applied?", "What happens when the balance goes below ₹5?", "How long does a dispute take to resolve?"];
 
-interface AssistantHealth {
-  status: string;
-  assistant: { ready: boolean } | null;
-}
-
 export function CopilotDrawer({ open, onOpenChange, msisdn }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -53,13 +46,7 @@ export function CopilotDrawer({ open, onOpenChange, msisdn }: Props) {
   const bottom = useRef<HTMLDivElement | null>(null);
 
   // While the models are still loading after a start, tell the agent the first answer will be slow.
-  const health = useQuery({
-    queryKey: keys.health,
-    queryFn: () => api<AssistantHealth>("/api/health"),
-    enabled: open,
-    refetchInterval: (query) => (query.state.data?.assistant?.ready === false ? 5000 : false),
-    staleTime: 0,
-  });
+  const health = useHealth(true, open);
   const warming = health.data?.assistant?.ready === false;
   const unavailable = health.data !== undefined && health.data.assistant === null;
 

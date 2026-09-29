@@ -1,5 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AiHealth } from "@contract/chat";
 import type {
+  AuditEntry,
   CustomerListItem,
   CustomerOverview,
   DashboardStats,
@@ -8,9 +10,15 @@ import type {
   NoteItem,
   PlanResponse,
   RechargeResponse,
+  ReportStats,
   SessionUser,
 } from "@contract/schemas";
 import { api, ApiError } from "@/lib/api";
+
+export interface AssistantHealth {
+  status: string;
+  assistant: AiHealth | null;
+}
 
 export const keys = {
   session: ["session"] as const,
@@ -21,6 +29,9 @@ export const keys = {
   tags: ["tags"] as const,
   disputes: (status: string, msisdn?: string) => ["disputes", { status, msisdn }] as const,
   dashboard: ["dashboard"] as const,
+  reports: (days: number) => ["reports", days] as const,
+  audit: (msisdn: string, action: string) => ["audit", { msisdn, action }] as const,
+  auditActions: ["audit-actions"] as const,
 };
 
 /** The signed-in user, or null when signed out. A 401 here is an answer, not an error. */
@@ -88,6 +99,22 @@ export function useOverview(msisdn: string) {
 
 export function usePlans() {
   return useQuery({ queryKey: keys.plans, queryFn: () => api<PlanResponse[]>("/api/plans"), staleTime: 5 * 60_000 });
+}
+
+export function useCreatePlan() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PlanResponse) => api<PlanResponse>("/api/plans", { method: "POST", json: body }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.plans }),
+  });
+}
+
+export function useUpdatePlan() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ plan_id, ...body }: PlanResponse) => api<PlanResponse>(`/api/plans/${encodeURIComponent(plan_id)}`, { method: "PUT", json: body }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.plans }),
+  });
 }
 
 export function useRecharge(msisdn: string) {
@@ -171,4 +198,38 @@ export function useResolveDispute() {
 
 export function useDashboard() {
   return useQuery({ queryKey: keys.dashboard, queryFn: () => api<DashboardStats>("/api/dashboard"), staleTime: 15_000, refetchInterval: 60_000 });
+}
+
+export function useReports(days: 7 | 30 | 90) {
+  return useQuery({ queryKey: keys.reports(days), queryFn: () => api<ReportStats>(`/api/reports?days=${days}`), placeholderData: keepPreviousData });
+}
+
+export function useAudit(msisdn = "", action = "") {
+  return useQuery({
+    queryKey: keys.audit(msisdn, action),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (msisdn) params.set("msisdn", msisdn);
+      if (action) params.set("action", action);
+      return api<AuditEntry[]>(`/api/audit?${params}`);
+    },
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useAuditActions() {
+  return useQuery({ queryKey: keys.auditActions, queryFn: () => api<string[]>("/api/audit/actions"), staleTime: 30_000 });
+}
+
+/** The assistant's status: which provider/model is active, and whether it has finished loading. `poll` keeps
+ * checking every 5s while it is still warming up (the Copilot drawer wants this); the Settings page does not.
+ * `enabled` skips fetching entirely (the Copilot drawer only needs this while it is open). */
+export function useHealth(poll = false, enabled = true) {
+  return useQuery({
+    queryKey: keys.health,
+    queryFn: () => api<AssistantHealth>("/api/health"),
+    enabled,
+    refetchInterval: poll ? (query) => (query.state.data?.assistant?.ready === false ? 5000 : false) : false,
+    staleTime: poll ? 0 : 15_000,
+  });
 }

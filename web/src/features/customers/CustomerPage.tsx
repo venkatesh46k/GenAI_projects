@@ -66,7 +66,7 @@ function BackLink() {
 }
 
 function CustomerView({ data }: { data: CustomerOverview }) {
-  const { subscriber, plan, usage, transactions, disputes, notes, tags } = data;
+  const { subscriber, profile, plan, usage, transactions, disputes, notes, tags } = data;
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const isTeamLead = useSession().data?.role === "team_lead";
   useEffect(() => recordRecentlyViewed(subscriber.msisdn), [subscriber.msisdn]);
@@ -83,17 +83,24 @@ function CustomerView({ data }: { data: CustomerOverview }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <span aria-hidden className="flex size-11 items-center justify-center rounded-full bg-accent text-sm font-semibold text-accent-foreground">
-            {subscriber.msisdn.slice(-2)}
+            {initials(profile?.name) ?? subscriber.msisdn.slice(-2)}
           </span>
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="tabular text-2xl font-semibold tracking-tight" data-testid="customer-number">
-                {subscriber.msisdn}
+              <h1 className="text-2xl font-semibold tracking-tight" data-testid="customer-number">
+                {profile?.name ?? subscriber.msisdn}
               </h1>
               <StatusBadge status={subscriber.status} />
+              {profile?.segment === "Business" && <Badge tone="info">Business</Badge>}
             </div>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Prepaid subscriber · last recharge {formatWhen(subscriber.last_recharge_date)}
+            {/* "Prepaid subscriber" is also the page-ready signal the browser QA agent and the Test-Gen prompt wait
+                for after sign-in (tests_qa/scenarios.py, agents/testgen_agent.py): keep it, whatever else is added. */}
+            <p className="tabular mt-0.5 text-sm text-muted-foreground" data-testid="customer-subheading">
+              Prepaid subscriber
+              {profile?.name && ` · ${subscriber.msisdn}`}
+              {profile?.email ? ` · ${profile.email}` : ""}
+              {profile?.city ? ` · ${profile.city}` : ""}
+              {" · "}last recharge {formatWhen(subscriber.last_recharge_date)}
             </p>
             <div className="mt-2">
               <TagsRow msisdn={subscriber.msisdn} tags={tags} />
@@ -376,6 +383,13 @@ function Kpi({ label, value, hint, tone, testId }: { label: string; value: strin
       </CardContent>
     </Card>
   );
+}
+
+/** "Ananya Sharma" -> "AS". Falls back to the last-2-digits avatar when there is no profile (undefined). */
+function initials(name: string | null | undefined): string | undefined {
+  if (!name) return undefined;
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts.at(-1)?.[0] ?? "")).toUpperCase() || undefined;
 }
 
 function Count({ n }: { n: number }): ReactNode {
