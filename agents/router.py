@@ -3,9 +3,19 @@ import re
 from agents.llm import get_llm
 from agents.state import AgentState
 
-# Order matters: escalation and dispute are checked before balance so that
-# "I want to dispute my recharge" does not match the balance keyword first.
+# Order matters. Process/policy questions are checked FIRST: "How long does a dispute take to resolve?" or "What
+# happens when the balance is low?" contain a topic keyword (dispute/balance/...) but ask about the policy, not a
+# specific account, so they must be caught before the keyword checks below claim them. Not when a number is given:
+# that is about a subscriber. Escalation and dispute are checked before balance so that "I want to dispute my
+# recharge" does not match the balance keyword first.
 ROUTES = [
+    (
+        "rag",
+        re.compile(
+            r"^(?!.*\b\d{10}\b)\s*(what happens (when|if)|what if|how (does|do|long|is|are)|when (does|do)|why (does|do))\b",
+            re.I,
+        ),
+    ),
     ("escalation", re.compile(r"\b(escalate|manager|complaint|file a case|supervisor)\b", re.I)),
     (
         "dispute",
@@ -16,15 +26,6 @@ ROUTES = [
         ),
     ),
     ("testgen", re.compile(r"\b(test|verify|check that|make sure .* works|validate the (ui|flow|page))\b", re.I)),
-    # Process and policy questions ("what happens when the balance is low?", "how does a recharge get applied?") mention
-    # balance/recharge but want the knowledge base, not a lookup. Not when a number is given: that is about a subscriber.
-    (
-        "rag",
-        re.compile(
-            r"^(?!.*\b\d{10}\b)\s*(what happens (when|if)|what if|how (does|do|long|is|are)|when (does|do)|why (does|do))\b",
-            re.I,
-        ),
-    ),
     # "my plan" / "my account" are deliberately not keywords: "when does my plan expire?" is a policy
     # question. Those ambiguous phrasings fall through to the LLM classifier instead.
     ("balance", re.compile(r"\b(balance|recharge|top ?up|plan details)\b", re.I)),

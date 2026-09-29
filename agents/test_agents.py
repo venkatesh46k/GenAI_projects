@@ -34,14 +34,19 @@ class FakeLLM:
         ("There is an overcharge on my bill", "dispute"),
         ("I was overcharged last week", "dispute"),
         ("I was charged twice for my recharge on 9876543210", "dispute"),
-        # process/policy questions that merely mention balance or recharge want the knowledge base
+        # process/policy questions that merely mention balance, recharge, dispute or escalation want the knowledge
+        # base, even though the topic keyword itself would otherwise claim them (real bug: reported by the user
+        # against the running console, "How long does a dispute take to resolve?" was asking for a phone number)
         ("What happens when my balance drops below 5 rupees?", "rag"),
         ("How does a recharge get applied?", "rag"),
         ("How long is the grace period after my plan expires?", "rag"),
+        ("How long does a dispute take to resolve?", "rag"),
+        ("What happens if I escalate a complaint?", "rag"),
         # ...but with a number it is about that subscriber
         ("What happens if I recharge 9876543210 with 99?", "balance"),
         ("What is the balance for 9876543210?", "balance"),
-        ("Why does my recharge keep failing? I want to dispute it", "dispute"),
+        # a genuine dispute request is not phrased as a policy question, so the dispute keyword still wins
+        ("My recharge failed but I was still charged, I want to dispute it", "dispute"),
     ],
 )
 def test_router_regex_paths_never_call_llm(monkeypatch, query, label):
